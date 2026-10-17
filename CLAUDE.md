@@ -158,3 +158,21 @@ DECISIONS LOG
 Format: date — decision — why (source if relevant).
 
 - 2026-10-17 — CLAUDE.md is the single source of truth for plan, status and decisions.
+- 2026-10-17 — TypeScript pinned to 6.0.x, not 7.x. TS 7 (Go-native compiler) no longer
+  exports the classic JS compiler API (its package `exports` only has `./unstable/*`), which
+  tsup's .d.ts generation relies on. Revisit when tsup supports TS 7.
+- 2026-10-17 — `@releaseproof/core` is private and source-only (`exports` points at
+  `src/index.ts`, no build step). The CLI (and later the Action) bundle it with tsup
+  (`noExternal`). Only one npm package (`releaseproof`) gets published, so there is no
+  second package to keep in sync or to be hijacked. Core is a devDependency of the CLI so
+  the published package.json never references an unpublished `workspace:*` package.
+  Easy to reverse: add a build step + publish core if a third-party consumer ever needs it.
+- 2026-10-17 — pnpm comes from Corepack via `packageManager` in root package.json (exact
+  version), locally and in CI. No global install needed.
+- 2026-10-17 — CI security baseline: `permissions: contents: read`, third-party actions
+  pinned to full commit SHAs (tags can be moved; SHAs can't), `persist-credentials: false`
+  on checkout (don't leave the token in .git/config), `--frozen-lockfile`, and no dependency
+  cache (cache poisoning was part of the TanStack attack chain).
+- 2026-10-17 — `.gitattributes` forces LF line endings so Biome and future tarball diffs
+  behave the same on Windows and Linux.
+- 2026-10-17 — npm name `releaseproof` was unclaimed on this date (registry 404).
