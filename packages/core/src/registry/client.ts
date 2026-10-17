@@ -5,8 +5,12 @@ export const DEFAULT_REGISTRY = "https://registry.npmjs.org/";
 export interface RegistryOptions {
   /** Registry base URL. Defaults to the public npm registry. */
   registry?: string | undefined;
-  /** Bearer token for the registry. */
+  /** Bearer token for the registry. When absent, it is looked up in `env` and `npmrcPaths`. */
   token?: string | undefined;
+  /** Environment to read NPM_TOKEN / NODE_AUTH_TOKEN from. Defaults to process.env. */
+  env?: NodeJS.ProcessEnv | undefined;
+  /** .npmrc files to consult for a token. Defaults to the project and user files. */
+  npmrcPaths?: string[] | undefined;
   /** Injectable fetch, for tests. */
   fetch?: typeof fetch | undefined;
   /** Request timeout in milliseconds. */

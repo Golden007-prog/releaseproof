@@ -97,7 +97,11 @@ export async function fetchPublished(
 ): Promise<ReleaseArtifact> {
   const spec = typeof input === "string" ? parseSpec(input) : input;
   const registry = normalizeRegistry(options.registry);
-  const token = resolveToken(registry, { explicit: options.token });
+  const token = resolveToken(registry, {
+    explicit: options.token,
+    env: options.env,
+    npmrcPaths: options.npmrcPaths,
+  });
   const client = options.pacote ?? pacote;
   const specString = `${spec.name}@${spec.version}`;
 

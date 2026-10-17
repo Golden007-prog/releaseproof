@@ -51,7 +51,11 @@ export async function fetchStaged(
     throw new ToolError(`Stage id must be a UUID, got "${stageId}"`);
   }
   const registry = normalizeRegistry(options.registry);
-  const token = resolveToken(registry, { explicit: options.token });
+  const token = resolveToken(registry, {
+    explicit: options.token,
+    env: options.env,
+    npmrcPaths: options.npmrcPaths,
+  });
   if (!token) {
     throw new ToolError(
       "Staged packages need an npm token. Set NPM_TOKEN, pass --token, or log in with npm so .npmrc has one.",

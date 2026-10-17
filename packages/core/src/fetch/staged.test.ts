@@ -52,7 +52,7 @@ describe("fetchStaged", () => {
 
   it("requires a token", async () => {
     await expect(
-      fetchStaged(STAGE_ID, { fetch: fakeFetch(itemFor()), env: {} } as never),
+      fetchStaged(STAGE_ID, { fetch: fakeFetch(itemFor()), env: {}, npmrcPaths: [] }),
     ).rejects.toThrow(/need an npm token/);
   });
 
