@@ -145,12 +145,17 @@ STATUS
 ==============================================================================
 Done:
 - CLAUDE.md created.
+- Phase 0 skeleton: pnpm 12 workspace, TS 6 strict, Biome 2.5, Vitest 5, tsup 9,
+  `@releaseproof/core` (ExitCode) + `releaseproof` CLI (`--version`), CI on Node 22 + 24.
 
 Next:
-- Phase 0 (skeleton).
+- Phase 1 spike [HARD]: show the model-switch banner first.
 
 Open questions:
-- (none yet)
+- Docker is not installed on the dev machine yet; needed from Phase 2.
+- When core gains runtime deps (pacote, sigstore, tar...), should the CLI bundle them or
+  list them as `dependencies`? Decide in Phase 1 (affects install size and supply-chain
+  surface).
 
 ==============================================================================
 DECISIONS LOG
@@ -176,3 +181,6 @@ Format: date — decision — why (source if relevant).
 - 2026-10-17 — `.gitattributes` forces LF line endings so Biome and future tarball diffs
   behave the same on Windows and Linux.
 - 2026-10-17 — npm name `releaseproof` was unclaimed on this date (registry 404).
+- 2026-10-17 — Dependency install scripts stay blocked (pnpm default). Each exception
+  must be listed in `allowBuilds` in pnpm-workspace.yaml. esbuild is set to `false`: its
+  postinstall only optimizes binary lookup and esbuild works without it.

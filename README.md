@@ -43,6 +43,26 @@ No LLM, no API key, no server. Same input, same answer, every time.
 
 Early development. Follow the repository for progress.
 
+## Development
+
+Requires Node 22.12+ and Corepack (bundled with Node 22 and 24).
+
+```sh
+corepack enable pnpm   # uses the pnpm version pinned in package.json
+pnpm install
+pnpm check             # lint + typecheck + test
+pnpm build
+node packages/cli/dist/index.js --version
+```
+
+On Windows without admin rights, use
+`corepack enable pnpm --install-directory "%APPDATA%\npm"`.
+
+| Path | What it is |
+| --- | --- |
+| `packages/core` | Verification logic (private, bundled into the CLI) |
+| `packages/cli` | The `releaseproof` command |
+
 ## License
 
 [MIT](./LICENSE) © 2026 Ujjwal Verma
