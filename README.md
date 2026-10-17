@@ -55,6 +55,13 @@ pnpm build
 node packages/cli/dist/index.js --version
 ```
 
+Tests run offline against captured registry responses. To also run the few
+tests that talk to the real npm registry and Sigstore:
+
+```sh
+RELEASEPROOF_NET_TESTS=1 pnpm test
+```
+
 On Windows without admin rights, use
 `corepack enable pnpm --install-directory "%APPDATA%\npm"`.
 
