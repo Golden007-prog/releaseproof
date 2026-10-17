@@ -10,6 +10,9 @@ export const ExitCode = {
 
 export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
 
+export * from "./diff/compare.js";
+export * from "./diff/tarball.js";
+export * from "./diff/text.js";
 export * from "./errors.js";
 export * from "./fetch/digests.js";
 export * from "./fetch/published.js";
@@ -21,6 +24,12 @@ export * from "./provenance/keys.js";
 export * from "./provenance/predicate.js";
 export * from "./provenance/types.js";
 export * from "./provenance/verify.js";
+export * from "./rebuild/docker.js";
+export * from "./rebuild/inspect.js";
+export * from "./rebuild/plan.js";
+export * from "./rebuild/run.js";
+export * from "./rebuild/scripts.js";
+export * from "./rebuild/source.js";
 export * from "./registry/auth.js";
 export * from "./registry/client.js";
 export * from "./registry/spec.js";
