@@ -41,7 +41,15 @@ No LLM, no API key, no server. Same input, same answer, every time.
 
 ## Status
 
-Early development. Follow the repository for progress.
+Early development; no release yet. What works in the code today:
+
+- Fetching a published or staged version and verifying its provenance against the Sigstore
+  trust root, with the certificate (not the build's own claim) as the source of truth.
+- Rebuilding a package from the certified commit in a hardened Docker container and
+  comparing it with the release file by file. `semver@7.8.5` and `sigstore@5.0.0` rebuild
+  bit-for-bit ([results](./docs/real-world-results.md)).
+
+Next: the rules engine, the verdict and the `check` command.
 
 ## Development
 
