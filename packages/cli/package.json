@@ -24,7 +24,9 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "commander": "^15.0.0"
+    "commander": "^15.0.0",
+    "pacote": "catalog:",
+    "sigstore": "catalog:"
   },
   "devDependencies": {
     "@releaseproof/core": "workspace:*",

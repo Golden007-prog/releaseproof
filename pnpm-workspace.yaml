@@ -1,6 +1,11 @@
 packages:
   - packages/*
 
+# One place for runtime dependency versions shared by core and the CLI.
+catalog:
+  pacote: ^22.0.0
+  sigstore: ^5.0.0
+
 # Dependency install scripts are blocked unless listed here.
 # esbuild's postinstall only optimizes binary lookup; it works without it.
 allowBuilds:
