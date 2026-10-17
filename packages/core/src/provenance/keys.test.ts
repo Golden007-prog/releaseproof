@@ -1,0 +1,49 @@
+import { describe, expect, it } from "vitest";
+import { SIGSTORE_5, sigstoreKeys } from "../../test/fixtures.js";
+import { lookupRegistryKey, readRegistryKeys } from "./keys.js";
+
+describe("readRegistryKeys", () => {
+  it("reads the real keys response", () => {
+    const keys = readRegistryKeys({ keys: sigstoreKeys() });
+    expect(keys).toHaveLength(2);
+    expect(keys?.[1]).toMatchObject({
+      keyid: SIGSTORE_5.keyid,
+      expires: null,
+      keytype: "ecdsa-sha2-nistp256",
+    });
+    expect(keys?.[0]?.expires).toBe("2025-01-29T00:00:00.000Z");
+  });
+
+  it("returns null for a malformed response", () => {
+    expect(readRegistryKeys({ keys: [{ keyid: "x" }] })).toBeNull();
+    expect(readRegistryKeys({})).toBeNull();
+    expect(readRegistryKeys("nope")).toBeNull();
+  });
+});
+
+describe("lookupRegistryKey", () => {
+  const keys = sigstoreKeys();
+  const now = new Date("2026-10-17T00:00:00Z");
+
+  it("returns the PEM for a current key", () => {
+    const lookup = lookupRegistryKey(keys, SIGSTORE_5.keyid, now);
+    expect(lookup.ok).toBe(true);
+    if (lookup.ok) {
+      expect(lookup.pem).toMatch(/^-----BEGIN PUBLIC KEY-----\nMFkw/);
+    }
+  });
+
+  it("refuses an expired key", () => {
+    expect(
+      lookupRegistryKey(keys, "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA", now),
+    ).toEqual({
+      ok: false,
+      problem:
+        "registry signing key SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA expired on 2025-01-29T00:00:00.000Z",
+    });
+  });
+
+  it("refuses an unknown keyid", () => {
+    expect(lookupRegistryKey(keys, "SHA256:unknown", now)).toMatchObject({ ok: false });
+  });
+});
