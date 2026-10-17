@@ -1,0 +1,121 @@
+{
+  "_note": "Signer.identity returned by sigstore@5.0.0 verify() for the sigstore@5.0.0 provenance bundle. OID values are base64 of the raw extension bytes.",
+  "subjectAlternativeName": "https://github.com/sigstore/sigstore-js/.github/workflows/release.yml@refs/heads/main",
+  "extensions": {
+    "issuer": "https://token.actions.githubusercontent.com"
+  },
+  "oids": [
+    {
+      "id": "2.5.29.15",
+      "valueBase64": "AwIHgA=="
+    },
+    {
+      "id": "2.5.29.37",
+      "valueBase64": "MAoGCCsGAQUFBwMD"
+    },
+    {
+      "id": "2.5.29.14",
+      "valueBase64": "BBQUkaLsi3IVIOFOm0Ks5TwggMwmHw=="
+    },
+    {
+      "id": "2.5.29.35",
+      "valueBase64": "MBaAFN/T6c9WJBGW+ajY6ShVosYuGGQ/"
+    },
+    {
+      "id": "2.5.29.17",
+      "valueBase64": "MFeGVWh0dHBzOi8vZ2l0aHViLmNvbS9zaWdzdG9yZS9zaWdzdG9yZS1qcy8uZ2l0aHViL3dvcmtmbG93cy9yZWxlYXNlLnltbEByZWZzL2hlYWRzL21haW4="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.1",
+      "valueBase64": "aHR0cHM6Ly90b2tlbi5hY3Rpb25zLmdpdGh1YnVzZXJjb250ZW50LmNvbQ=="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.2",
+      "valueBase64": "cHVzaA=="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.3",
+      "valueBase64": "N2QyOTAwZWNhMWMyMmIzZjg3YzEzOTg3YzhkNGI3YzlhMjliNzMzYQ=="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.4",
+      "valueBase64": "UmVsZWFzZQ=="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.5",
+      "valueBase64": "c2lnc3RvcmUvc2lnc3RvcmUtanM="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.6",
+      "valueBase64": "cmVmcy9oZWFkcy9tYWlu"
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.8",
+      "valueBase64": "DCtodHRwczovL3Rva2VuLmFjdGlvbnMuZ2l0aHVidXNlcmNvbnRlbnQuY29t"
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.9",
+      "valueBase64": "DFVodHRwczovL2dpdGh1Yi5jb20vc2lnc3RvcmUvc2lnc3RvcmUtanMvLmdpdGh1Yi93b3JrZmxvd3MvcmVsZWFzZS55bWxAcmVmcy9oZWFkcy9tYWlu"
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.10",
+      "valueBase64": "DCg3ZDI5MDBlY2ExYzIyYjNmODdjMTM5ODdjOGQ0YjdjOWEyOWI3MzNh"
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.11",
+      "valueBase64": "DA1naXRodWItaG9zdGVk"
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.12",
+      "valueBase64": "DCdodHRwczovL2dpdGh1Yi5jb20vc2lnc3RvcmUvc2lnc3RvcmUtanM="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.13",
+      "valueBase64": "DCg3ZDI5MDBlY2ExYzIyYjNmODdjMTM5ODdjOGQ0YjdjOWEyOWI3MzNh"
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.14",
+      "valueBase64": "DA9yZWZzL2hlYWRzL21haW4="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.15",
+      "valueBase64": "DAk0OTU1NzQ1NTU="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.16",
+      "valueBase64": "DBtodHRwczovL2dpdGh1Yi5jb20vc2lnc3RvcmU="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.17",
+      "valueBase64": "DAg3MTA5NjM1Mw=="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.18",
+      "valueBase64": "DFVodHRwczovL2dpdGh1Yi5jb20vc2lnc3RvcmUvc2lnc3RvcmUtanMvLmdpdGh1Yi93b3JrZmxvd3MvcmVsZWFzZS55bWxAcmVmcy9oZWFkcy9tYWlu"
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.19",
+      "valueBase64": "DCg3ZDI5MDBlY2ExYzIyYjNmODdjMTM5ODdjOGQ0YjdjOWEyOWI3MzNh"
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.20",
+      "valueBase64": "DARwdXNo"
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.21",
+      "valueBase64": "DEtodHRwczovL2dpdGh1Yi5jb20vc2lnc3RvcmUvc2lnc3RvcmUtanMvYWN0aW9ucy9ydW5zLzI2NzgxODY2NjE4L2F0dGVtcHRzLzE="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.22",
+      "valueBase64": "DAZwdWJsaWM="
+    },
+    {
+      "id": "1.3.6.1.4.1.57264.1.24",
+      "valueBase64": "DC1yZXBvOnNpZ3N0b3JlL3NpZ3N0b3JlLWpzOnJlZjpyZWZzL2hlYWRzL21haW4="
+    },
+    {
+      "id": "1.3.6.1.4.1.11129.2.4.2",
+      "valueBase64": "BHkAdwB1AN09MGrGxxEyYxkeHJlnNwKiSl643jyt/4eKcoAvKe6OAAABnoT/F1gAAAQDAEYwRAIgOLZ8vRQeq8e49Kfuo2C/jTO7IBPJw42S2VicuBvdRdACIDtho9itrAkB5xiZ4Nue3lTKz1jdLyl9h5Uj1GCieBG1"
+    }
+  ]
+}
