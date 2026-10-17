@@ -12,7 +12,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "diff": "catalog:",
+    "execa": "catalog:",
     "pacote": "catalog:",
-    "sigstore": "catalog:"
+    "sigstore": "catalog:",
+    "tar": "catalog:"
   }
 }

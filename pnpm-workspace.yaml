@@ -3,8 +3,11 @@ packages:
 
 # One place for runtime dependency versions shared by core and the CLI.
 catalog:
+  diff: ^9.0.0
+  execa: ^10.1.1
   pacote: ^22.0.0
   sigstore: ^5.0.0
+  tar: ^7.5.22
 
 # Dependency install scripts are blocked unless listed here.
 # esbuild's postinstall only optimizes binary lookup; it works without it.

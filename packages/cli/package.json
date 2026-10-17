@@ -25,8 +25,11 @@
   },
   "dependencies": {
     "commander": "^15.0.0",
+    "diff": "catalog:",
+    "execa": "catalog:",
     "pacote": "catalog:",
-    "sigstore": "catalog:"
+    "sigstore": "catalog:",
+    "tar": "catalog:"
   },
   "devDependencies": {
     "@releaseproof/core": "workspace:*",
