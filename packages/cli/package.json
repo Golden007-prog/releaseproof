@@ -1,0 +1,24 @@
+{
+  "name": "releaseproof",
+  "version": "0.0.0",
+  "description": "Verify that an npm release matches its source before you approve it.",
+  "license": "MIT",
+  "author": "Ujjwal Verma",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ujjwalv01/releaseproof.git",
+    "directory": "packages/cli"
+  },
+  "type": "module",
+  "bin": {
+    "releaseproof": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}
