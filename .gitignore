@@ -25,6 +25,9 @@ pnpm-debug.log*
 .env.*
 !.env.example
 
+# Private working notes (kept local on purpose)
+CLAUDE.md
+
 # Editor and OS files
 .vscode/*
 !.vscode/extensions.json
