@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+
+# Dependency install scripts are blocked unless listed here.
+# esbuild's postinstall only optimizes binary lookup; it works without it.
+allowBuilds:
+  esbuild: false
