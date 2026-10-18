@@ -1,9 +1,37 @@
 import { Command } from "commander";
 import pkg from "../package.json" with { type: "json" };
+import { type CheckCommandOptions, runCheckCommand } from "./commands/check.js";
 
 export function createProgram(): Command {
-  return new Command()
+  const program = new Command()
     .name("releaseproof")
     .description("Verify that an npm release matches its source before you approve it.")
     .version(pkg.version, "-v, --version");
+
+  program
+    .command("check")
+    .description("Rebuild a published version from its certified source and compare the two")
+    .argument("<package>", "<name>@<version>, for example sigstore@5.0.0")
+    .option("--registry <url>", "registry base URL (default: https://registry.npmjs.org/)")
+    .option("--token <token>", "registry token (default: NPM_TOKEN, NODE_AUTH_TOKEN or .npmrc)")
+    .option(
+      "--repo <url>",
+      "repository you expect; with --commit, the source to rebuild from when there is no provenance",
+    )
+    .option("--commit <sha>", "full commit SHA to rebuild from when there is no provenance")
+    .option("--image <image>", "Docker image for the build (default: node:<major>-bookworm)")
+    .option("--node <major>", "Node.js major to build with (default: from the release workflow)")
+    .option("--build-command <command>", "shell command to build with instead of the detected one")
+    .option("--offline", "use the cached Sigstore trust root without refreshing it")
+    .option("--keep-volume", "keep the Docker volume after the run, for debugging")
+    .option("--json", "print the full report as JSON")
+    .option("--quiet", "no progress output on stderr")
+    .action(async (spec: string, options: CheckCommandOptions) => {
+      process.exitCode = await runCheckCommand(spec, options, {
+        stdout: (text) => process.stdout.write(text),
+        stderr: (text) => process.stderr.write(text),
+      });
+    });
+
+  return program;
 }

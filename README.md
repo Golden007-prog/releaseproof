@@ -32,6 +32,42 @@ to decide, on their own, whether the tarball is really theirs.
 
 No LLM, no API key, no server. Same input, same answer, every time.
 
+## Usage
+
+Not published yet; from a checkout, after `pnpm install && pnpm build`:
+
+```sh
+node packages/cli/dist/index.js check sigstore@5.0.0
+```
+
+What happens: the tarball and its attestations are fetched, the provenance is verified
+against the Sigstore trust root, the package is rebuilt from the certified commit inside a
+hardened Docker container (clone and install with network, build without), the two
+tarballs are compared file by file, and the rules decide.
+
+```text
+Package      sigstore@5.0.0 (registry.npmjs.org), 9 files, sha512 849a897e81bf…
+Provenance   VERIFIED  sigstore/sigstore-js@7d2900e on refs/heads/main
+             workflow .github/workflows/release.yml, trigger push, github-hosted runner
+Rebuild      OK (2m 14s)  node:22-bookworm, npm 10.9.9, build: root "build" script
+Files        9 identical, 0 changed, 0 only in release, 0 only in rebuild
+
+Findings     none
+
+Verdict: MATCHES SOURCE: 9 files identical to a clean build of sigstore/sigstore-js@7d2900e
+```
+
+Exit codes: `0` matches source, `1` differs from source, `2` could not verify (or a tool
+error). "Could not verify" is never "safe".
+
+Options: `--repo <url>` (the repository you expect; with `--commit <sha>` it is the source
+to rebuild from when there is no provenance), `--node <major>` / `--image <image>` /
+`--build-command <cmd>` to override the build plan, `--json` for the full report,
+`--offline` to skip refreshing the Sigstore trust root, `--keep-volume` to inspect the
+build afterwards. Every rule and severity is documented in [docs/rules.md](./docs/rules.md).
+
+Requirements: Node 22+, Docker. No account, no API key, no telemetry.
+
 ## Planned packages
 
 | Package | What it is |
