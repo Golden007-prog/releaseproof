@@ -105,7 +105,7 @@ describe("planBuild: package manager and commands", () => {
 
   it("npm without any lockfile installs with a warning", () => {
     const result = plan(inspection({ packages: [single] }));
-    expect(result.install.argv).toEqual(["npm", "install", "--ignore-scripts"]);
+    expect(result.install?.argv).toEqual(["npm", "install", "--ignore-scripts"]);
     expect(result.warnings).toEqual([
       "no lockfile found: dependency versions are not pinned, so the rebuild may drift",
     ]);
@@ -197,7 +197,7 @@ describe("planBuild: package manager and commands", () => {
       { name: "x", version: "1.0.0" },
     );
     expect(result.manager.name).toBe("yarn-berry");
-    expect(result.install.argv).toEqual([
+    expect(result.install?.argv).toEqual([
       "corepack",
       "yarn@4.6.0",
       "install",
@@ -235,7 +235,7 @@ describe("planBuild: package manager and commands", () => {
       spec: "yarn@1",
       source: "yarn.lock (classic format)",
     });
-    expect(result.install.argv).toEqual([
+    expect(result.install?.argv).toEqual([
       "corepack",
       "yarn@1",
       "install",
@@ -451,5 +451,40 @@ describe("parseInspection", () => {
     );
     expect(() => parseInspection({ commit: "abc", packages: [] })).toThrow(/no commit/);
     expect(() => parseInspection("nope")).toThrow(/not an object/);
+  });
+});
+
+describe("planBuild: skipping the install stage", () => {
+  it("skips install for an npm package with no build step and no pack-time scripts", () => {
+    const result = plan(
+      inspection({
+        packages: [{ ...single, scripts: { test: "tap" } }],
+        lockfiles: ["package-lock.json"],
+      }),
+    );
+    expect(result.install).toBeUndefined();
+    expect(result.rebuildDeps).toBeUndefined();
+    expect(result.installSkipped).toBe(
+      "no build step and no pack-time scripts, so npm pack needs no node_modules",
+    );
+    expect(result.pack.argv).toEqual(["npm", "pack", "--pack-destination", OUT_DIR]);
+  });
+
+  it("keeps the install stage when a pack-time script, a build, publishConfig.directory or another manager is involved", () => {
+    expect(
+      plan(inspection({ packages: [{ ...single, scripts: { prepare: "husky" } }] })).install,
+    ).toBeDefined();
+    expect(plan(inspection({ packages: [single] })).install).toBeDefined();
+    expect(
+      plan(
+        inspection({
+          packages: [{ ...single, scripts: {}, publishConfig: { directory: "dist" } }],
+        }),
+      ).install,
+    ).toBeDefined();
+    expect(
+      plan(inspection({ packages: [{ ...single, scripts: {} }], lockfiles: ["pnpm-lock.yaml"] }))
+        .install,
+    ).toBeDefined();
   });
 });

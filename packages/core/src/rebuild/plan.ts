@@ -7,6 +7,17 @@ export const DEFAULT_NODE_MAJOR = 22;
 
 export type PackageManagerName = "npm" | "pnpm" | "yarn-berry" | "yarn-classic";
 
+/** Scripts npm runs during `npm pack`; their presence means the install stage is needed. */
+export const PACK_TIME_SCRIPTS = [
+  "prepack",
+  "prepare",
+  "prepublishOnly",
+  "postpack",
+  "preprepare",
+  "postprepare",
+  "prepublish",
+] as const;
+
 export interface PackageManager {
   name: PackageManagerName;
   /** Corepack spec such as `pnpm@10.4.1` or `yarn@1`; undefined for the image's npm. */
@@ -29,7 +40,9 @@ export interface BuildPlan {
   nodeMajor: number;
   nodeSource: string;
   image: string;
-  install: Command;
+  /** Undefined when nothing needs node_modules; `installSkipped` says why. */
+  install: Command | undefined;
+  installSkipped?: string | undefined;
   /** Runs dependency lifecycle scripts offline. Failure is logged, not fatal. */
   rebuildDeps: Command | undefined;
   build: Command | undefined;
@@ -252,7 +265,7 @@ export function planBuild(input: PlanInput): PlanResult {
   const isWorkspace =
     Boolean(root?.hasWorkspaces || inspection.hasPnpmWorkspace) && pkg.dir !== ".";
 
-  let install: Command;
+  let install: Command | undefined;
   let rebuildDeps: Command | undefined;
   let pack: Command;
   switch (manager.name) {
@@ -341,6 +354,17 @@ export function planBuild(input: PlanInput): PlanResult {
     buildSource = "no build script; packing the checkout as is";
   }
 
+  // `npm pack` only needs node_modules when a script runs at pack time. Skipping the install
+  // turns minutes into seconds for plain-JavaScript packages. pnpm and Yarn always install:
+  // that stage is where Corepack downloads them for the offline build.
+  let installSkipped: string | undefined;
+  const packTimeScript = PACK_TIME_SCRIPTS.find((name) => pkg.scripts?.[name] !== undefined);
+  if (manager.name === "npm" && !build && !pkg.publishConfig?.directory && !packTimeScript) {
+    install = undefined;
+    rebuildDeps = undefined;
+    installSkipped = "no build step and no pack-time scripts, so npm pack needs no node_modules";
+  }
+
   const publishDirectory = pkg.publishConfig?.directory;
   let packDir = pkgDir;
   if (typeof publishDirectory === "string" && publishDirectory !== "") {
@@ -365,6 +389,7 @@ export function planBuild(input: PlanInput): PlanResult {
       nodeSource: node.source,
       image,
       install,
+      installSkipped,
       rebuildDeps,
       build,
       buildSource,

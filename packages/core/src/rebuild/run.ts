@@ -7,7 +7,13 @@ import {
   type DockerClient,
 } from "./docker.js";
 import { InspectionError, parseInspection, type RepoInspection } from "./inspect.js";
-import { type BuildPlan, DEFAULT_NODE_MAJOR, type PlanOverrides, planBuild } from "./plan.js";
+import {
+  type BuildPlan,
+  type Command,
+  DEFAULT_NODE_MAJOR,
+  type PlanOverrides,
+  planBuild,
+} from "./plan.js";
 import {
   CLONE_SCRIPT,
   INIT_SCRIPT,
@@ -77,6 +83,10 @@ export interface RebuildOptions {
 
 const OUTPUT_TAIL = 6000;
 const UNPRIVILEGED = "1000:1000";
+
+function readToolVersion(stdout: Buffer): string | undefined {
+  return new RegExp(`^${TOOL_VERSION_MARKER} (\\S+)$`, "m").exec(stdout.toString("utf8"))?.[1];
+}
 
 function tail(text: string): string {
   return text.length > OUTPUT_TAIL ? `…${text.slice(-OUTPUT_TAIL)}` : text;
@@ -231,28 +241,28 @@ export async function rebuildPackage(
     }
     result.imageDigest = await docker.imageDigest(plan.image);
 
-    const install = await runStage(
-      "install",
-      {
-        image: plan.image,
-        network: "bridge",
-        env: {},
-        argv: ["bash", "-c", renderInstallScript(plan)],
-        timeoutMs: timeouts.installMs,
-      },
-      false,
-    );
-    if (install.exitCode !== 0) {
-      return fail(stageFailure("install", install));
+    let toolVersion: string | undefined;
+    if (plan.install) {
+      const install = await runStage(
+        "install",
+        {
+          image: plan.image,
+          network: "bridge",
+          env: {},
+          argv: ["bash", "-c", renderInstallScript(plan)],
+          timeoutMs: timeouts.installMs,
+        },
+        false,
+      );
+      if (install.exitCode !== 0) {
+        return fail(stageFailure("install", install));
+      }
+      toolVersion = readToolVersion(install.stdout);
+    } else {
+      log(`install: skipped (${plan.installSkipped ?? "not needed"})`);
     }
-    const toolVersion = new RegExp(`^${TOOL_VERSION_MARKER} (\\S+)$`, "m").exec(
-      install.stdout.toString("utf8"),
-    )?.[1];
     const buildPlan = pinManagerVersion(plan, toolVersion);
     result.plan = buildPlan;
-    result.toolVersion = toolVersion
-      ? `${buildPlan.manager.name.replace("-berry", "").replace("-classic", "")} ${toolVersion}`
-      : undefined;
 
     const build = await runStage(
       "build",
@@ -268,6 +278,10 @@ export async function rebuildPackage(
     if (build.exitCode !== 0) {
       return fail(stageFailure("build", build));
     }
+    toolVersion ??= readToolVersion(build.stdout);
+    result.toolVersion = toolVersion
+      ? `${buildPlan.manager.name.replace("-berry", "").replace("-classic", "")} ${toolVersion}`
+      : undefined;
     const expectedSha = /^([0-9a-f]{64}) {2}package\.tgz$/m.exec(
       build.stdout.toString("utf8"),
     )?.[1];
@@ -320,14 +334,14 @@ export function pinManagerVersion(plan: BuildPlan, version: string | undefined):
     return plan;
   }
   const exact = `${spec.split("@")[0]}@${version}`;
-  const pin = (command: BuildPlan["install"]) => ({
+  const pin = (command: Command): Command => ({
     ...command,
     argv: command.argv.map((token, index) => (index === 1 && token === spec ? exact : token)),
   });
   return {
     ...plan,
     manager: { ...plan.manager, spec: exact },
-    install: pin(plan.install),
+    install: plan.install ? pin(plan.install) : undefined,
     rebuildDeps: plan.rebuildDeps ? pin(plan.rebuildDeps) : undefined,
     build: plan.build ? pin(plan.build) : undefined,
     pack: pin(plan.pack),

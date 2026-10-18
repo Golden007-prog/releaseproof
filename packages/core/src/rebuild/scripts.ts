@@ -71,17 +71,25 @@ echo ${INSPECTION_MARKER}
 node -e "\${RP_INSPECT_JS}"
 `;
 
-/** Stage 2 (network): install with scripts ignored, then report the tool version used. */
-export function renderInstallScript(plan: BuildPlan): string {
+/** The command that prints the package manager version actually in use. */
+function versionCommand(plan: BuildPlan): string {
   const tool = plan.manager.name === "npm" ? "npm" : plan.manager.name === "pnpm" ? "pnpm" : "yarn";
-  const versionArgv = plan.manager.spec
+  const argv = plan.manager.spec
     ? ["corepack", plan.manager.spec, "--version"]
     : [tool, "--version"];
+  return `echo "${TOOL_VERSION_MARKER} $(${argv.map(shellQuote).join(" ")})"`;
+}
+
+/** Stage 2 (network): install with scripts ignored, then report the tool version used. */
+export function renderInstallScript(plan: BuildPlan): string {
+  if (!plan.install) {
+    throw new Error("this plan has no install step");
+  }
   return `set -euo pipefail
 ${COMMON_ENV}
 mkdir -p /work/home
 ${renderCommand(plan.install)}
-echo "${TOOL_VERSION_MARKER} $(${versionArgv.map(shellQuote).join(" ")})"
+${versionCommand(plan)}
 `;
 }
 
@@ -91,6 +99,7 @@ export function renderBuildScript(plan: BuildPlan): string {
     "set -euo pipefail",
     COMMON_ENV,
     "export COREPACK_ENABLE_NETWORK=0",
+    versionCommand(plan),
     "mkdir -p /work/out",
     "rm -f /work/out/*.tgz",
   ];

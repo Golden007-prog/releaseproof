@@ -115,3 +115,12 @@ describe("renderBuildScript", () => {
     expect(script).toContain("'pack'");
   });
 });
+
+describe("tool version reporting", () => {
+  it("is printed by the build stage too, for plans that skip the install stage", () => {
+    expect(renderBuildScript(plan)).toContain(
+      `echo "__RP_TOOL_VERSION__ $('corepack' 'pnpm@10.4.1' '--version')"`,
+    );
+    expect(() => renderInstallScript({ ...plan, install: undefined })).toThrow(/no install step/);
+  });
+});

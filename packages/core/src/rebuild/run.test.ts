@@ -262,3 +262,27 @@ describe("pinManagerVersion", () => {
     expect(pinManagerVersion(exact, "10.4.1")).toBe(exact);
   });
 });
+
+describe("rebuildPackage without an install stage", () => {
+  it("goes clone → build → export and takes the tool version from the build stage", async () => {
+    const npmInspection = {
+      ...inspection,
+      lockfiles: ["package-lock.json"],
+      lockfileDetails: { npm: 3 },
+      packages: [{ dir: ".", name: "tiny", version: "1.0.0", scripts: { test: "tap" } }],
+    };
+    const docker = happyPath({
+      clone: () => ({
+        stdout: Buffer.from(`${INSPECTION_MARKER}\n${JSON.stringify(npmInspection)}`),
+      }),
+      build: () => ({
+        stdout: Buffer.from(`${TOOL_VERSION_MARKER} 10.9.9\n${tarballSha}  package.tgz\n`),
+      }),
+    });
+    const result = await rebuildPackage(source, target, { docker, volumeId: "abc" });
+    expect(result.status).toBe("ok");
+    expect(docker.stages()).toEqual(["init", "clone", "build", "export"]);
+    expect(result.plan?.installSkipped).toMatch(/npm pack needs no node_modules/);
+    expect(result.toolVersion).toBe("npm 10.9.9");
+  });
+});
