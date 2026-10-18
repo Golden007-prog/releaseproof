@@ -42,10 +42,100 @@ rebuild, the diff and the provenance result. Every rule needs:
 Docker flags or the planner need a unit test and, when they affect real packages, a row in
 `docs/real-world-results.md`.
 
-## Pull requests
+## Finding something to work on
 
-- Small, focused commits with conventional messages (`feat(core): …`, `fix(action): …`).
-- `pnpm check` and `pnpm build` must pass. The Action bundle in `action/dist` is committed:
-  run `pnpm build` and commit it with any change under `action/` or `packages/core/`.
-- Add a changeset for user-visible changes: `pnpm changeset`.
-- Third-party actions in workflows are pinned to full commit SHAs.
+- Issues labelled [good first issue](https://github.com/ujjwalv01/releaseproof/labels/good%20first%20issue)
+  are small, self-contained and name the files to touch and the tests to add.
+- [help wanted](https://github.com/ujjwalv01/releaseproof/labels/help%20wanted) issues are
+  bigger and need Docker and some reading of `docs/design-rebuild.md`.
+- Comment on the issue before starting so two people do not do the same work. If you want
+  to change something that has no issue yet, open one first and describe the change; for
+  anything security-relevant, read SECURITY.md.
+
+## Pull requests, step by step
+
+1. **Fork and clone.** Click "Fork" on GitHub, then:
+
+   ```sh
+   git clone https://github.com/<your-user>/releaseproof.git
+   cd releaseproof
+   git remote add upstream https://github.com/ujjwalv01/releaseproof.git
+   ```
+
+2. **Set up.** Node 22.12+ with Corepack, and Docker if you will touch the rebuild:
+
+   ```sh
+   corepack enable pnpm
+   pnpm install          # uses the pinned pnpm from package.json; install scripts stay blocked
+   pnpm check            # lint + typecheck + tests, must be green before you start
+   ```
+
+3. **Branch from an up-to-date main.** Never work on `main` itself:
+
+   ```sh
+   git fetch upstream
+   git switch -c fix/short-description upstream/main
+   ```
+
+   Use a prefix that says what the branch does: `feat/`, `fix/`, `docs/`, `test/`.
+
+4. **Make the change, with tests.** Every behaviour change needs a test next to the code
+   (`*.test.ts`). Security logic needs both an "attacked" case that must be caught and a
+   "clean" case that must pass (see `fixtures/README.md`). Keep the principles above.
+
+5. **Run everything locally.**
+
+   ```sh
+   pnpm check            # lint + typecheck + tests
+   pnpm build            # CLI and Action bundles
+   ```
+
+   `pnpm lint` reports formatting too; `pnpm exec biome check --write .` fixes it. If you
+   changed anything under `action/` or `packages/core/`, `pnpm build` updates
+   `action/dist`; commit it, CI fails when the bundle is stale.
+
+6. **Add a changeset** when users will notice the change (CLI, Action, verdicts, rules):
+
+   ```sh
+   pnpm changeset
+   ```
+
+   Pick `patch` for fixes, `minor` for new options or rules, and write one or two lines
+   as they should appear in the changelog. Pure docs, tests and CI changes need none.
+
+7. **Commit** in small steps with conventional messages, for example
+   `feat(core): resolve dist-tags before checking`, `fix(action): reject a relative
+   report path`, `docs: describe the JSON report`. The first line stays under 72
+   characters; the body says why, not what.
+
+8. **Push and open the PR:**
+
+   ```sh
+   git push -u origin fix/short-description
+   ```
+
+   GitHub prints a link to open the pull request against `ujjwalv01/releaseproof:main`.
+   In the description: what changed, why, how you tested it, and `Closes #<issue>` when
+   it resolves an issue. The template checklist is short; tick what applies.
+
+9. **CI and review.** CI runs lint, typecheck, tests on Node 22 and 24, the packed
+   manifest check and the Action self-test (a real rebuild of `sigstore@5.0.0` in
+   Docker). First-time contributors need a maintainer to approve the workflow run; that
+   is normal. Address review comments with new commits; the PR is squash-merged, so no
+   need to rewrite history. If `main` moved, `git fetch upstream && git rebase
+   upstream/main` and push again.
+
+Rules that apply to every PR:
+
+- Third-party GitHub Actions in workflows are pinned to full commit SHAs, never tags.
+- No new runtime dependency without an issue discussing it first; the CLI is bundled and
+  every dependency ships to every user.
+- Nothing in the repository may execute package contents on the host, phone home, or
+  turn a "could not verify" into a "matches".
+
+## Reporting a bug
+
+Open an issue with the command you ran, the full output (use `--json` for the report),
+the package and version, your OS, Node and Docker versions. If you think you found a way
+to make releaseproof say MATCHES SOURCE for a tampered package, do not open a public
+issue; follow SECURITY.md.
