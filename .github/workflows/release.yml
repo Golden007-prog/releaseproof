@@ -1,0 +1,137 @@
+name: Release
+
+# releaseproof releases itself through the flow it verifies for everyone else:
+#   1. "Version Packages" PR from Changesets (version bump + changelog), merged by a human.
+#   2. On main, if packages/cli's version is not on the registry yet: npm stage publish
+#      with provenance via trusted publishing (stage-only). Nothing goes live here.
+#   3. The staged version is checked by this repository's own action.
+#   4. A maintainer approves with 2FA: npm stage approve <id>.
+# Armed once releaseproof exists on npm and its trusted publisher (stage-only) points at this
+# workflow file. Until then the stage job finds no package and skips.
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version-pr:
+    name: Version Packages PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # the changesets action pushes the version branch
+      pull-requests: write # and opens/updates the PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Enable pnpm via Corepack
+        run: corepack enable pnpm
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      - run: pnpm install --frozen-lockfile
+      - name: Open or update the Version Packages PR (no publish here)
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          version: pnpm version
+          commit: "chore: version packages"
+          title: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  stage:
+    name: Stage the release with provenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: version-pr
+    permissions:
+      contents: read
+      id-token: write # trusted publishing + provenance
+    outputs:
+      stage-id: ${{ steps.stage.outputs.stage-id }}
+      version: ${{ steps.decide.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Enable pnpm via Corepack
+        run: corepack enable pnpm
+        env:
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm build
+
+      - name: Decide whether this version needs staging
+        id: decide
+        run: |
+          VERSION=$(node -p "require('./packages/cli/package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$VERSION" = "0.0.0" ]; then
+            echo "placeholder version; nothing to release"; echo "stage=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if npm view "releaseproof@$VERSION" version >/dev/null 2>&1; then
+            echo "releaseproof@$VERSION is already published"; echo "stage=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "releaseproof@$VERSION is new"; echo "stage=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Staged publishing needs npm 11.15+; Node 22 ships an older npm.
+      - name: Use a current npm
+        if: steps.decide.outputs.stage == 'true'
+        run: npm install -g npm@latest
+
+      - name: npm stage publish (trusted publishing, provenance)
+        id: stage
+        if: steps.decide.outputs.stage == 'true'
+        working-directory: packages/cli
+        run: |
+          npm stage publish --access public --provenance --json | tee /tmp/stage.json
+          STAGE_ID=$(node -e 'const r=JSON.parse(require("node:fs").readFileSync("/tmp/stage.json","utf8")); console.log(Object.values(r)[0]?.stageId ?? "")')
+          test -n "$STAGE_ID"
+          echo "stage-id=$STAGE_ID" >> "$GITHUB_OUTPUT"
+
+  verify-staged:
+    name: Verify the staged release with releaseproof itself
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: stage
+    if: needs.stage.outputs.stage-id != ''
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the staged version against this commit
+        uses: ./action
+        with:
+          package: releaseproof
+          version: ${{ needs.stage.outputs.version }}
+          stage: ${{ needs.stage.outputs.stage-id }}
+          commit: ${{ github.sha }}
+          fail-on: non-zero
+      - name: How to approve
+        if: always()
+        run: |
+          {
+            echo "## Approve the release"
+            echo
+            echo "If the verdict above is MATCHES SOURCE, approve with 2FA:"
+            echo
+            echo '```'
+            echo "npx -y npm@latest stage approve ${{ needs.stage.outputs.stage-id }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
