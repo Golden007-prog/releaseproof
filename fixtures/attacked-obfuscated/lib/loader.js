@@ -1,0 +1,1 @@
+"use strict";var _0x4f2a=["\x66\x69\x78\x74\x75\x72\x65","\x6c\x6f\x61\x64\x65\x72","\x6a\x6f\x69\x6e","\x72\x65\x6c\x65\x61\x73\x65\x70\x72\x6f\x6f\x66"];var _0x1b3c=function(_0x2d1e,_0x3f4a){return _0x4f2a[_0x2d1e]};var _0x5e6f=[_0x1b3c(0),_0x1b3c(1)];var _0x6a7b=_0x5e6f[_0x1b3c(2)](" ");module.exports={name:_0x6a7b,tool:_0x4f2a[3]};
