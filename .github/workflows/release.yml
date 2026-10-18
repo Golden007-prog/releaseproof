@@ -41,7 +41,7 @@ jobs:
       - name: Open or update the Version Packages PR (no publish here)
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
-          version: pnpm version
+          version: pnpm run version-packages # not "pnpm version": that is a built-in pnpm command
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
