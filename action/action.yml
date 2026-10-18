@@ -38,7 +38,7 @@ inputs:
     required: false
     default: non-zero
   create-issue:
-    description: Open an issue when the verdict is not MATCHES SOURCE. Needs "issues: write".
+    description: 'Open an issue when the verdict is not MATCHES SOURCE. Needs the "issues: write" permission.'
     required: false
     default: "false"
   issue-labels:
