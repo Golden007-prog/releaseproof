@@ -72921,7 +72921,8 @@ function parsePackage(value) {
     packageManager: optionalString2(value.packageManager),
     publishConfig: isRecord6(value.publishConfig) ? value.publishConfig : void 0,
     engines: stringRecord(value.engines),
-    hasWorkspaces: typeof value.hasWorkspaces === "boolean" ? value.hasWorkspaces : void 0
+    hasWorkspaces: typeof value.hasWorkspaces === "boolean" ? value.hasWorkspaces : void 0,
+    lockfiles: Array.isArray(value.lockfiles) ? value.lockfiles.filter((entry) => typeof entry === "string") : void 0
   };
 }
 function parseInspection(json2) {
@@ -72946,6 +72947,7 @@ function parseInspection(json2) {
     nodeVersionFiles: stringRecord(json2.nodeVersionFiles) ?? {},
     hasYarnrcYml: json2.hasYarnrcYml === true,
     hasPnpmWorkspace: json2.hasPnpmWorkspace === true,
+    hasLernaJson: json2.hasLernaJson === true,
     hasSubmodules: json2.hasSubmodules === true,
     packages: json2.packages.map(parsePackage),
     workflow: typeof json2.workflow === "string" ? json2.workflow : null
@@ -73061,7 +73063,9 @@ function chooseManager(inspection, pkg, root, warnings) {
       if (parsed) {
         return parsed;
       }
-      warnings.push(`ignoring unrecognised packageManager "${field}"`);
+      return {
+        unsupported: `package manager "${field}" is not supported (only npm, pnpm and yarn are)`
+      };
     }
   }
   const lock = new Set(inspection.lockfiles);
@@ -73127,7 +73131,7 @@ function planBuild(input) {
   const image = overrides.image ?? `node:${node.major}-bookworm`;
   const rootDir = root ? REPO_DIR : `${REPO_DIR}/${pkg.dir}`;
   const pkgDir = pkg.dir === "." ? REPO_DIR : `${REPO_DIR}/${pkg.dir}`;
-  const isWorkspace = Boolean(root?.hasWorkspaces || inspection.hasPnpmWorkspace) && pkg.dir !== ".";
+  const isWorkspace = Boolean(root?.hasWorkspaces || inspection.hasPnpmWorkspace || inspection.hasLernaJson) && pkg.dir !== ".";
   let install;
   let rebuildDeps;
   let pack;
@@ -73171,6 +73175,16 @@ function planBuild(input) {
       pack = { argv: managerArgv(manager, "pack", "--pack-destination", OUT_DIR), cwd: pkgDir };
     }
   }
+  let installExtra;
+  if (manager.name === "npm" && isWorkspace && !root?.hasWorkspaces && pkgDir !== rootDir) {
+    const hasPackageLock = (pkg.lockfiles ?? []).some(
+      (name) => name === "package-lock.json" || name === "npm-shrinkwrap.json"
+    );
+    installExtra = {
+      argv: managerArgv(manager, hasPackageLock ? "ci" : "install", "--ignore-scripts"),
+      cwd: pkgDir
+    };
+  }
   let build;
   let buildSource;
   if (overrides.buildCommand) {
@@ -73179,10 +73193,10 @@ function planBuild(input) {
   } else if (pkg.scripts?.build) {
     switch (manager.name) {
       case "pnpm":
-        build = {
+        build = isWorkspace ? {
           argv: managerArgv(manager, "--filter", `${target.name}...`, "run", "build"),
           cwd: rootDir
-        };
+        } : { argv: managerArgv(manager, "run", "build"), cwd: pkgDir };
         break;
       case "yarn-berry":
         build = isWorkspace ? {
@@ -73204,8 +73218,14 @@ function planBuild(input) {
     }
     buildSource = `"build" script of ${pkg.dir === "." ? "the package" : pkg.dir}${build.cwd === rootDir && pkg.dir !== "." ? " (run from the root)" : ""}`;
   } else if (isWorkspace && root?.scripts?.build) {
-    build = { argv: managerArgv(manager, "run", "build"), cwd: rootDir };
-    buildSource = 'root "build" script';
+    const lernaScript = /^lerna run (\S+)/.exec(root.scripts.build)?.[1];
+    if (lernaScript && pkg.scripts?.[lernaScript]) {
+      build = { argv: managerArgv(manager, "run", lernaScript), cwd: pkgDir };
+      buildSource = `"${lernaScript}" script of ${pkg.dir} (named by the root lerna build)`;
+    } else {
+      build = { argv: managerArgv(manager, "run", "build"), cwd: rootDir };
+      buildSource = 'root "build" script';
+    }
   } else {
     build = void 0;
     buildSource = "no build script; packing the checkout as is";
@@ -73241,6 +73261,8 @@ function planBuild(input) {
       image,
       install,
       installSkipped,
+      installExtra,
+      setVersion: pkg.version === target.version ? void 0 : target.version,
       rebuildDeps,
       build,
       buildSource,
@@ -73267,6 +73289,13 @@ var COMMON_ENV = [
   "export GIT_TERMINAL_PROMPT=0",
   "export COREPACK_ENABLE_DOWNLOAD_PROMPT=0 COREPACK_ENABLE_STRICT=0 COREPACK_ENABLE_AUTO_PIN=0",
   "export COREPACK_HOME=/work/home/.corepack",
+  // We always name the exact tool ourselves; a project whose packageManager field names
+  // something Corepack does not know (seen: "nub@0.8.3") must not make Corepack refuse to
+  // run at all.
+  "export COREPACK_ENABLE_PROJECT_SPEC=0",
+  // Shims installed by the install stage, so package scripts that call pnpm or yarn by
+  // name (tsx's prepack runs "pnpm build") find them offline.
+  'export PATH="/work/home/bin:$PATH"',
   "export npm_config_fund=false npm_config_audit=false npm_config_update_notifier=false"
 ].join("\n");
 var INSPECT_JS = [
@@ -73276,7 +73305,7 @@ var INSPECT_JS = [
   "const packages=[];",
   'for(const f of files){if(path.posix.basename(f)!=="package.json"||f.split("/").includes("node_modules"))continue;',
   'let j;try{j=JSON.parse(read(f)??"")}catch{continue}if(!j||typeof j!=="object")continue;',
-  'packages.push({dir:path.posix.dirname(f),name:j.name,version:j.version,private:j.private,scripts:j.scripts,packageManager:j.packageManager,publishConfig:j.publishConfig,engines:j.engines,hasWorkspaces:Array.isArray(j.workspaces)||(!!j.workspaces&&typeof j.workspaces==="object")});}',
+  'packages.push({dir:path.posix.dirname(f),name:j.name,version:j.version,private:j.private,scripts:j.scripts,packageManager:j.packageManager,publishConfig:j.publishConfig,engines:j.engines,lockfiles:["package-lock.json","npm-shrinkwrap.json","pnpm-lock.yaml","yarn.lock"].filter((n)=>fs.existsSync(path.posix.join(path.posix.dirname(f),n))),hasWorkspaces:Array.isArray(j.workspaces)||(!!j.workspaces&&typeof j.workspaces==="object")});}',
   'const lockfiles=["package-lock.json","npm-shrinkwrap.json","pnpm-lock.yaml","yarn.lock","bun.lock","bun.lockb"].filter((n)=>fs.existsSync(n));',
   "const lockfileDetails={};",
   `const pl=read("pnpm-lock.yaml");if(pl){const m=/^lockfileVersion:\\s*['"]?([\\d.]+)/m.exec(pl);if(m)lockfileDetails.pnpm=m[1];}`,
@@ -73284,7 +73313,7 @@ var INSPECT_JS = [
   'const yl=read("yarn.lock");if(yl){lockfileDetails.yarnBerry=/^__metadata:/m.test(yl);}',
   'const nodeVersionFiles={};for(const n of [".nvmrc",".node-version",".tool-versions"]){const c=read(n);if(c!==undefined)nodeVersionFiles[n]=c.slice(0,500);}',
   'const wf=process.env.RP_WORKFLOW;const workflow=wf&&files.includes(wf)?(read(wf)??"").slice(0,200000):null;',
-  'const out={commit:cp.execFileSync("git",["rev-parse","HEAD"]).toString().trim(),lockfiles,lockfileDetails,nodeVersionFiles,hasYarnrcYml:fs.existsSync(".yarnrc.yml"),hasPnpmWorkspace:fs.existsSync("pnpm-workspace.yaml"),hasSubmodules:fs.existsSync(".gitmodules"),packages,workflow};',
+  'const out={commit:cp.execFileSync("git",["rev-parse","HEAD"]).toString().trim(),lockfiles,lockfileDetails,nodeVersionFiles,hasYarnrcYml:fs.existsSync(".yarnrc.yml"),hasPnpmWorkspace:fs.existsSync("pnpm-workspace.yaml"),hasSubmodules:fs.existsSync(".gitmodules"),hasLernaJson:fs.existsSync("lerna.json"),packages,workflow};',
   "process.stdout.write(JSON.stringify(out));"
 ].join("");
 var CLONE_SCRIPT = `set -euo pipefail
@@ -73318,9 +73347,21 @@ function renderInstallScript(plan) {
   return `set -euo pipefail
 ${COMMON_ENV}
 mkdir -p /work/home
-${renderCommand(plan.install)}
-${versionCommand(plan)}
+${toolSetup(plan)}${renderCommand(plan.install)}
+${plan.installExtra ? `${renderCommand(plan.installExtra)}
+` : ""}${versionCommand(plan)}
 `;
+}
+function toolSetup(plan) {
+  if (!plan.manager.spec) {
+    return "";
+  }
+  return [
+    "mkdir -p /work/home/bin",
+    "corepack enable --install-directory /work/home/bin",
+    `corepack install -g ${shellQuote(plan.manager.spec)}`,
+    ""
+  ].join("\n");
 }
 function renderBuildScript(plan) {
   const lines = [
@@ -73331,6 +73372,14 @@ function renderBuildScript(plan) {
     "mkdir -p /work/out",
     "rm -f /work/out/*.tgz"
   ];
+  if (plan.setVersion) {
+    lines.push(
+      renderCommand({
+        argv: ["npm", "pkg", "set", `version=${plan.setVersion}`],
+        cwd: plan.packDir
+      })
+    );
+  }
   if (plan.rebuildDeps) {
     lines.push(
       `if ! ( ${renderCommand(plan.rebuildDeps)} ); then echo "warning: running dependency scripts failed; continuing" >&2; fi`
@@ -73502,7 +73551,8 @@ async function rebuildPackage(source, target, options = {}) {
           argv: ["bash", "-c", renderInstallScript(plan)],
           timeoutMs: timeouts.installMs
         },
-        false
+        true
+        // package managers print their errors on stdout as often as stderr
       );
       if (install.exitCode !== 0) {
         return fail2(stageFailure("install", install));
@@ -73583,6 +73633,7 @@ function pinManagerVersion(plan, version) {
     ...plan,
     manager: { ...plan.manager, spec: exact },
     install: plan.install ? pin(plan.install) : void 0,
+    installExtra: plan.installExtra ? pin(plan.installExtra) : void 0,
     rebuildDeps: plan.rebuildDeps ? pin(plan.rebuildDeps) : void 0,
     build: plan.build ? pin(plan.build) : void 0,
     pack: pin(plan.pack)
@@ -74894,6 +74945,12 @@ function parseInputs(getInput2, context4) {
       `Input "node" must be a Node.js major version such as 22, got "${nodeInput}"`
     );
   }
+  const memoryInput = getInput2("memory").trim().toLowerCase();
+  if (memoryInput && !/^\d+[kmg]?$/.test(memoryInput)) {
+    throw new ToolError(
+      `Input "memory" must be a Docker size such as 4g or 6144m, got "${memoryInput}"`
+    );
+  }
   const failOnInput = getInput2("fail-on").trim() || "non-zero";
   if (!["non-zero", "differs", "never"].includes(failOnInput)) {
     throw new ToolError(`Input "fail-on" must be non-zero, differs or never, got "${failOnInput}"`);
@@ -74917,6 +74974,7 @@ function parseInputs(getInput2, context4) {
     nodeMajor,
     image: getInput2("image").trim() || void 0,
     buildCommand: getInput2("build-command").trim() || void 0,
+    memory: memoryInput || void 0,
     failOn: failOnInput,
     createIssue: createIssueInput === "true",
     issueLabels: getInput2("issue-labels").split(",").map((label) => label.trim()).filter((label) => label !== ""),
@@ -75012,6 +75070,7 @@ async function runAction(io2) {
       nodeMajor: inputs.nodeMajor,
       image: inputs.image,
       buildCommand: inputs.buildCommand,
+      memory: inputs.memory,
       log: (line) => io2.info(line)
     });
   } catch (error2) {

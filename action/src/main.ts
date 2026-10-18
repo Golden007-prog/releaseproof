@@ -62,6 +62,7 @@ export async function runAction(io: ActionIo): Promise<void> {
       nodeMajor: inputs.nodeMajor,
       image: inputs.image,
       buildCommand: inputs.buildCommand,
+      memory: inputs.memory,
       log: (line) => io.info(line),
     });
   } catch (error) {

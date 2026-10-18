@@ -124,3 +124,11 @@ describe("parseInputs with a stage id", () => {
     );
   });
 });
+
+describe("parseInputs memory", () => {
+  it("accepts Docker sizes and rejects anything else", () => {
+    expect(parseInputs(inputs({ memory: "6G" }), context()).memory).toBe("6g");
+    expect(parseInputs(inputs({}), context()).memory).toBeUndefined();
+    expect(() => parseInputs(inputs({ memory: "lots" }), context())).toThrow(/Docker size/);
+  });
+});

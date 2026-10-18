@@ -26,6 +26,7 @@ export function createProgram(): Command {
     .option("--image <image>", "Docker image for the build (default: node:<major>-bookworm)")
     .option("--node <major>", "Node.js major to build with (default: from the release workflow)")
     .option("--build-command <command>", "shell command to build with instead of the detected one")
+    .option("--memory <size>", "Docker memory limit for the build containers (default: 4g)")
     .option("--offline", "use the cached Sigstore trust root without refreshing it")
     .option("--keep-volume", "keep the Docker volume after the run, for debugging")
     .option("--json", "print the full report as JSON")

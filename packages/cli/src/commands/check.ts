@@ -16,6 +16,7 @@ export interface CheckCommandOptions {
   image?: string | undefined;
   node?: string | undefined;
   buildCommand?: string | undefined;
+  memory?: string | undefined;
   offline?: boolean | undefined;
   keepVolume?: boolean | undefined;
   json?: boolean | undefined;
@@ -63,6 +64,7 @@ export async function runCheckCommand(
       image: options.image,
       nodeMajor: parseNodeMajor(options.node),
       buildCommand: options.buildCommand,
+      memory: options.memory,
       offline: options.offline,
       keepVolume: options.keepVolume,
       log: options.quiet ? undefined : (line) => io.stderr(`… ${line}\n`),
