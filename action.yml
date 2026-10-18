@@ -1,4 +1,4 @@
-name: releaseproof
+name: releaseproof check
 description: Verify that an npm release matches its source before you trust it
 author: Ujjwal Verma
 branding:
