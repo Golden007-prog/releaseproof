@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { parseSpec, ToolError } from "@releaseproof/core";
+import { parseSpec, STAGE_ID_RE, ToolError } from "@releaseproof/core";
 
 export type FailOn = "non-zero" | "differs" | "never";
 
 export interface ActionInputs {
-  spec: string;
+  /** Undefined only when a stage id is given and the checkout has no package.json. */
+  spec: string | undefined;
+  stageId: string | undefined;
   repository: string | undefined;
   commit: string | undefined;
   registry: string | undefined;
@@ -63,15 +65,22 @@ export function parseInputs(getInput: GetInput, context: ActionContext): ActionI
       `releaseproof refuses to run on ${context.eventName}: that event exposes repository secrets to contributor-controlled code. Run it on release, push, workflow_dispatch or workflow_run instead.`,
     );
   }
+  const stageInput = getInput("stage").trim().toLowerCase();
+  if (stageInput && !STAGE_ID_RE.test(stageInput)) {
+    throw new ToolError(`Input "stage" must be a stage id (UUID), got "${stageInput}"`);
+  }
   const manifest = readWorkspaceManifest(context.workspace);
   const name = getInput("package").trim() || manifest.name;
   const version = getInput("version").trim() || manifest.version;
-  if (!name || !version) {
+  let spec: string | undefined;
+  if (name && version) {
+    const parsed = parseSpec(`${name}@${version}`);
+    spec = `${parsed.name}@${parsed.version}`;
+  } else if (!stageInput) {
     throw new ToolError(
       'Inputs "package" and "version" are required when the checkout has no package.json with a name and version',
     );
   }
-  const spec = parseSpec(`${name}@${version}`);
 
   const repoInput = getInput("repo")
     .trim()
@@ -112,7 +121,8 @@ export function parseInputs(getInput: GetInput, context: ActionContext): ActionI
   }
 
   return {
-    spec: `${spec.name}@${spec.version}`,
+    spec,
+    stageId: stageInput || undefined,
     repository: repoInput || undefined,
     commit: commitInput || undefined,
     registry: getInput("registry").trim() || undefined,

@@ -10,8 +10,12 @@ export function createProgram(): Command {
 
   program
     .command("check")
-    .description("Rebuild a published version from its certified source and compare the two")
-    .argument("<package>", "<name>@<version>, for example sigstore@5.0.0")
+    .description("Rebuild a published or staged version from its source and compare the two")
+    .argument("[package]", "<name>@<version>, for example sigstore@5.0.0")
+    .option(
+      "--stage <id>",
+      "check a staged version by its stage id instead (needs a registry token)",
+    )
     .option("--registry <url>", "registry base URL (default: https://registry.npmjs.org/)")
     .option("--token <token>", "registry token (default: NPM_TOKEN, NODE_AUTH_TOKEN or .npmrc)")
     .option(
@@ -26,7 +30,7 @@ export function createProgram(): Command {
     .option("--keep-volume", "keep the Docker volume after the run, for debugging")
     .option("--json", "print the full report as JSON")
     .option("--quiet", "no progress output on stderr")
-    .action(async (spec: string, options: CheckCommandOptions) => {
+    .action(async (spec: string | undefined, options: CheckCommandOptions) => {
       process.exitCode = await runCheckCommand(spec, options, {
         stdout: (text) => process.stdout.write(text),
         stderr: (text) => process.stderr.write(text),

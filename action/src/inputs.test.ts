@@ -101,3 +101,26 @@ describe("parseInputs", () => {
     ).toBe("x@1.0.0");
   });
 });
+
+describe("parseInputs with a stage id", () => {
+  it("accepts a stage id, with the package spec as an optional cross-check", () => {
+    const parsed = parseInputs(
+      inputs({ stage: "123E4567-e89b-12d3-a456-426614174000" }),
+      context(),
+    );
+    expect(parsed.stageId).toBe("123e4567-e89b-12d3-a456-426614174000");
+    expect(parsed.spec).toBe("releaseproof@1.2.3");
+    const empty = mkdtempSync(path.join(tmpdir(), "releaseproof-action-stage-"));
+    const noSpec = parseInputs(
+      inputs({ stage: "123e4567-e89b-12d3-a456-426614174000" }),
+      context({ workspace: empty }),
+    );
+    expect(noSpec.spec).toBeUndefined();
+  });
+
+  it("rejects a malformed stage id", () => {
+    expect(() => parseInputs(inputs({ stage: "../approve" }), context())).toThrow(
+      /stage id \(UUID\)/,
+    );
+  });
+});

@@ -2,6 +2,7 @@ import { compareTarballs, type DiffResult } from "../diff/compare.js";
 import { readTarball, type TarballContents } from "../diff/tarball.js";
 import { ToolError } from "../errors.js";
 import { fetchPublished } from "../fetch/published.js";
+import { fetchStaged } from "../fetch/staged.js";
 import type { ReleaseArtifact } from "../fetch/types.js";
 import { fetchRegistryKeys } from "../provenance/keys.js";
 import type { ProvenanceResult } from "../provenance/types.js";
@@ -13,11 +14,14 @@ import {
   type StageTimeouts,
 } from "../rebuild/run.js";
 import { type SourceRef, sourceFromProvenance, validateSource } from "../rebuild/source.js";
+import { parseSpec } from "../registry/spec.js";
 import { buildVerdict, type Verdict } from "../verdict/verdict.js";
 
 export interface CheckOptions {
-  /** `<name>@<version>` of a published version. */
-  spec: string;
+  /** `<name>@<version>` of a published version. With `stageId`, a cross-check of the staged item. */
+  spec?: string | undefined;
+  /** Stage id (UUID) of a staged, not yet approved version. Needs a registry token. */
+  stageId?: string | undefined;
   registry?: string | undefined;
   token?: string | undefined;
   env?: NodeJS.ProcessEnv | undefined;
@@ -40,6 +44,7 @@ export interface CheckOptions {
 /** The core functions the check calls, injectable for tests. */
 export interface CheckDeps {
   fetchPublished: typeof fetchPublished;
+  fetchStaged: typeof fetchStaged;
   fetchRegistryKeys: typeof fetchRegistryKeys;
   verifyProvenance: typeof verifyProvenance;
   rebuildPackage: typeof rebuildPackage;
@@ -47,6 +52,7 @@ export interface CheckDeps {
 
 const defaultDeps: CheckDeps = {
   fetchPublished,
+  fetchStaged,
   fetchRegistryKeys,
   verifyProvenance,
   rebuildPackage,
@@ -177,8 +183,24 @@ export async function runCheck(
     npmrcPaths: options.npmrcPaths,
   };
 
-  log(`fetching ${options.spec}`);
-  const artifact: ReleaseArtifact = await deps.fetchPublished(options.spec, registryOptions);
+  let artifact: ReleaseArtifact;
+  if (options.stageId) {
+    log(`fetching staged version ${options.stageId}`);
+    artifact = await deps.fetchStaged(options.stageId, registryOptions);
+    if (options.spec) {
+      const expected = parseSpec(options.spec);
+      if (expected.name !== artifact.name || expected.version !== artifact.version) {
+        throw new ToolError(
+          `Staged ${options.stageId} is ${artifact.name}@${artifact.version}, not ${options.spec}`,
+        );
+      }
+    }
+  } else if (options.spec) {
+    log(`fetching ${options.spec}`);
+    artifact = await deps.fetchPublished(options.spec, registryOptions);
+  } else {
+    throw new ToolError("Give a package as <name>@<version>, or --stage <id> for a staged version");
+  }
   const registry = artifact.origin.registry;
 
   let registryKeys: Awaited<ReturnType<typeof fetchRegistryKeys>> = null;

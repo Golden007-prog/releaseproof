@@ -12,6 +12,9 @@ inputs:
   version:
     description: Exact version to check. Defaults to "version" in the checkout's package.json.
     required: false
+  stage:
+    description: Stage id of a staged, not yet approved version to check instead of a published one. Needs a registry token in NPM_TOKEN or NODE_AUTH_TOKEN.
+    required: false
   repo:
     description: Repository the release must have been built from. Any other repository is a critical finding.
     required: false

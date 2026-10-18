@@ -8,6 +8,7 @@ import {
 } from "@releaseproof/core";
 
 export interface CheckCommandOptions {
+  stage?: string | undefined;
   registry?: string | undefined;
   token?: string | undefined;
   repo?: string | undefined;
@@ -46,7 +47,7 @@ function parseNodeMajor(value: string | undefined): number | undefined {
  * and the exit code is the verdict's: 0 match, 1 differs, 2 could not verify / tool error.
  */
 export async function runCheckCommand(
-  spec: string,
+  spec: string | undefined,
   options: CheckCommandOptions,
   io: CommandIo,
   deps: CheckCommandDeps = { runCheck },
@@ -54,6 +55,7 @@ export async function runCheckCommand(
   try {
     const report = await deps.runCheck({
       spec,
+      stageId: options.stage,
       registry: options.registry,
       token: options.token,
       repository: options.repo,

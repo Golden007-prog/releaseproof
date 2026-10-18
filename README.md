@@ -60,6 +60,10 @@ Verdict: MATCHES SOURCE: 9 files identical to a clean build of sigstore/sigstore
 Exit codes: `0` matches source, `1` differs from source, `2` could not verify (or a tool
 error). "Could not verify" is never "safe".
 
+Staged, not yet approved versions: `node packages/cli/dist/index.js check --stage <id>
+--repo <url> --commit <sha>` (the stage id from `npm stage list`; needs your npm token in
+`NPM_TOKEN` or `.npmrc`; staged versions carry no provenance yet, so you name the source).
+
 Options: `--repo <url>` (the repository you expect; with `--commit <sha>` it is the source
 to rebuild from when there is no provenance), `--node <major>` / `--image <image>` /
 `--build-command <cmd>` to override the build plan, `--json` for the full report,

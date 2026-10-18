@@ -32,6 +32,15 @@ function depsFor(input: {
   return {
     calls,
     fetchPublished: async () => artifactFor(input.release),
+    fetchStaged: async (stageId) => ({
+      ...(await artifactFor(input.release)),
+      origin: {
+        kind: "staged",
+        registry: "https://registry.npmjs.org/",
+        stageId,
+        item: { id: stageId, packageName: "@releaseproof/fixture", version: "1.0.0" },
+      },
+    }),
     fetchRegistryKeys: async () => [],
     verifyProvenance: async () => input.provenance ?? verifiedProvenance(),
     rebuildPackage: async (source, target, options) => {
@@ -185,5 +194,35 @@ describe("runCheck", () => {
         keepVolume: true,
       },
     });
+  });
+});
+
+describe("runCheck with a staged version", () => {
+  const stageId = "123e4567-e89b-12d3-a456-426614174000";
+
+  it("fetches the staged tarball and rebuilds from --repo/--commit, since staging has no provenance", async () => {
+    const deps = depsFor({ release: "clean", provenance: missing });
+    const report = await runCheck(
+      { stageId, repository: FIXTURE_REPOSITORY, commit: "b".repeat(40) },
+      deps,
+    );
+    expect(report.package.origin).toBe("staged");
+    expect(report.verdict.status).toBe("matches-source");
+    expect(report.verdict.summary).toContain("not certified by provenance");
+  });
+
+  it("cross-checks the staged item against a package spec when both are given", async () => {
+    const deps = depsFor({ release: "clean", provenance: missing });
+    await expect(runCheck({ stageId, spec: "@releaseproof/fixture@9.9.9" }, deps)).rejects.toThrow(
+      /is @releaseproof\/fixture@1.0.0, not @releaseproof\/fixture@9.9.9/,
+    );
+    const report = await runCheck({ stageId, spec: "@releaseproof/fixture@1.0.0" }, deps);
+    expect(report.verdict.status).toBe("could-not-verify");
+  });
+
+  it("needs either a package spec or a stage id", async () => {
+    await expect(runCheck({}, depsFor({ release: "clean" }))).rejects.toThrow(
+      /Give a package as <name>@<version>, or --stage <id>/,
+    );
   });
 });

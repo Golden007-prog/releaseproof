@@ -95,3 +95,22 @@ describe("runCheckCommand", () => {
     expect(err[1]).toMatch(/--node expects a Node.js major version/);
   });
 });
+
+describe("runCheckCommand with --stage", () => {
+  it("passes the stage id through and allows the package argument to be absent", async () => {
+    const runCheck = vi.fn(async (_options: CheckOptions) => fakeReport(2));
+    const { io: streams } = io();
+    await runCheckCommand(
+      undefined,
+      { stage: "123e4567-e89b-12d3-a456-426614174000", quiet: true },
+      streams,
+      {
+        runCheck,
+      },
+    );
+    expect(runCheck.mock.calls[0]?.[0]).toMatchObject({
+      spec: undefined,
+      stageId: "123e4567-e89b-12d3-a456-426614174000",
+    });
+  });
+});

@@ -64546,17 +64546,91 @@ async function fetchPublished(input, options = {}) {
   };
 }
 
-// ../packages/core/src/provenance/keys.ts
+// ../packages/core/src/fetch/staged.ts
+var STAGE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+function readItem(body, stageId) {
+  if (!isRecord2(body)) {
+    throw new ToolError(`Registry returned an unexpected response for staged package ${stageId}`);
+  }
+  const item = { ...body, id: stageId };
+  for (const field of [
+    "packageName",
+    "version",
+    "tag",
+    "createdAt",
+    "actor",
+    "actorType",
+    "shasum",
+    "status"
+  ]) {
+    const value = body[field];
+    item[field] = typeof value === "string" ? value : void 0;
+  }
+  return item;
+}
+async function fetchStaged(stageId, options = {}) {
+  if (!STAGE_ID_RE.test(stageId)) {
+    throw new ToolError(`Stage id must be a UUID, got "${stageId}"`);
+  }
+  const registry = normalizeRegistry(options.registry);
+  const token = resolveToken(registry, {
+    explicit: options.token,
+    env: options.env,
+    npmrcPaths: options.npmrcPaths
+  });
+  if (!token) {
+    throw new ToolError(
+      "Staged packages need an npm token. Set NPM_TOKEN, pass --token, or log in with npm so .npmrc has one."
+    );
+  }
+  const requestOptions = { ...options, registry, token };
+  const id = stageId.toLowerCase();
+  const body = await registryJson(`/-/stage/${id}`, requestOptions);
+  if (body === null) {
+    throw new ToolError(`Staged package ${id} was not found, or this token cannot see it`);
+  }
+  const item = readItem(body, id);
+  if (!item.packageName || !item.version) {
+    throw new ToolError(
+      `Registry did not report a package name and version for staged package ${id}`
+    );
+  }
+  const tarball = await registryBytes(`/-/stage/${id}/tarball`, requestOptions);
+  const digests = computeDigests(tarball);
+  if (item.shasum && item.shasum.toLowerCase() !== digests.sha1Hex) {
+    throw new ToolError(
+      `Staged tarball ${id} does not match the shasum the registry reported (expected ${item.shasum}, got ${digests.sha1Hex})`
+    );
+  }
+  return {
+    origin: { kind: "staged", registry, stageId: id, item },
+    name: item.packageName,
+    version: item.version,
+    purl: toPurl(item.packageName, item.version),
+    tarball,
+    digests,
+    dist: null,
+    hints: {},
+    // Whether the registry exposes attestations for staged versions is an open question
+    // (docs/spike-npm.md section 6). Until it is answered we report provenance as missing.
+    attestations: null
+  };
+}
+
+// ../packages/core/src/provenance/keys.ts
+function isRecord3(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 function readRegistryKeys(body) {
-  if (!isRecord2(body) || !Array.isArray(body.keys)) {
+  if (!isRecord3(body) || !Array.isArray(body.keys)) {
     return null;
   }
   const keys = [];
   for (const entry of body.keys) {
-    if (!isRecord2(entry) || typeof entry.keyid !== "string" || typeof entry.key !== "string") {
+    if (!isRecord3(entry) || typeof entry.keyid !== "string" || typeof entry.key !== "string") {
       return null;
     }
     keys.push({
@@ -64683,13 +64757,13 @@ var GIT_COMMIT_RE = /^[0-9a-f]{40}$/;
 var AttestationFormatError = class extends Error {
   name = "AttestationFormatError";
 };
-function isRecord3(value) {
+function isRecord4(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function read(value, ...path13) {
   let current = value;
   for (const key of path13) {
-    if (!isRecord3(current)) {
+    if (!isRecord4(current)) {
       return void 0;
     }
     current = current[key];
@@ -64698,7 +64772,7 @@ function read(value, ...path13) {
 }
 function decodeStatement(bundle) {
   const envelope = bundle.dsseEnvelope;
-  if (!isRecord3(envelope) || typeof envelope.payload !== "string") {
+  if (!isRecord4(envelope) || typeof envelope.payload !== "string") {
     throw new AttestationFormatError("bundle has no DSSE envelope with a payload");
   }
   if (envelope.payloadType !== INTOTO_PAYLOAD_TYPE) {
@@ -64710,12 +64784,12 @@ function decodeStatement(bundle) {
   } catch {
     throw new AttestationFormatError("DSSE payload is not valid JSON");
   }
-  if (!isRecord3(statement) || typeof statement._type !== "string" || typeof statement.predicateType !== "string" || !isRecord3(statement.predicate) || !Array.isArray(statement.subject)) {
+  if (!isRecord4(statement) || typeof statement._type !== "string" || typeof statement.predicateType !== "string" || !isRecord4(statement.predicate) || !Array.isArray(statement.subject)) {
     throw new AttestationFormatError("DSSE payload is not an in-toto statement");
   }
   const subject = [];
   for (const entry of statement.subject) {
-    if (!isRecord3(entry) || typeof entry.name !== "string" || !isRecord3(entry.digest)) {
+    if (!isRecord4(entry) || typeof entry.name !== "string" || !isRecord4(entry.digest)) {
       throw new AttestationFormatError("in-toto subject is malformed");
     }
     const digest = {};
@@ -64775,7 +64849,7 @@ function parseGithubPredicate(statement) {
   const workflowPath = read(p2, "buildDefinition", "externalParameters", "workflow", "path");
   const workflowRef = read(p2, "buildDefinition", "externalParameters", "workflow", "ref");
   const builderId = read(p2, "runDetails", "builder", "id");
-  const definition = isRecord3(p2.buildDefinition) ? p2.buildDefinition : void 0;
+  const definition = isRecord4(p2.buildDefinition) ? p2.buildDefinition : void 0;
   const dependencies = Array.isArray(definition?.resolvedDependencies) ? definition.resolvedDependencies : [];
   const sourceUri = read(dependencies[0], "uri");
   const commit = read(dependencies[0], "digest", "gitCommit");
@@ -64838,11 +64912,11 @@ var sigstoreVerifier = async (bundle, options) => {
   const signer = await (0, import_sigstore.verify)(bundle, verifyOptions);
   return { identity: signer.identity };
 };
-function isRecord4(value) {
+function isRecord5(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function isBundleLike(bundle) {
-  return typeof bundle.mediaType === "string" && isRecord4(bundle.verificationMaterial) && isRecord4(bundle.dsseEnvelope);
+  return typeof bundle.mediaType === "string" && isRecord5(bundle.verificationMaterial) && isRecord5(bundle.dsseEnvelope);
 }
 function fail(result, status, problem) {
   result.status = status;
@@ -64851,14 +64925,14 @@ function fail(result, status, problem) {
 }
 function readKeyHint(bundle) {
   const material = bundle.verificationMaterial;
-  const publicKey = isRecord4(material) ? material.publicKey : void 0;
-  return isRecord4(publicKey) && typeof publicKey.hint === "string" ? publicKey.hint : void 0;
+  const publicKey = isRecord5(material) ? material.publicKey : void 0;
+  return isRecord5(publicKey) && typeof publicKey.hint === "string" ? publicKey.hint : void 0;
 }
 function readTransparencyLog(bundle) {
   const material = bundle.verificationMaterial;
-  const entries = isRecord4(material) ? material.tlogEntries : void 0;
+  const entries = isRecord5(material) ? material.tlogEntries : void 0;
   const first = Array.isArray(entries) ? entries[0] : void 0;
-  if (!isRecord4(first)) {
+  if (!isRecord5(first)) {
     return void 0;
   }
   const { logIndex, integratedTime } = first;
@@ -72813,14 +72887,14 @@ function createDockerClient(options = {}) {
 var InspectionError = class extends Error {
   name = "InspectionError";
 };
-function isRecord5(value) {
+function isRecord6(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function optionalString2(value) {
   return typeof value === "string" ? value : void 0;
 }
 function stringRecord(value) {
-  if (!isRecord5(value)) {
+  if (!isRecord6(value)) {
     return void 0;
   }
   const out = {};
@@ -72832,7 +72906,7 @@ function stringRecord(value) {
   return out;
 }
 function parsePackage(value) {
-  if (!isRecord5(value) || typeof value.dir !== "string") {
+  if (!isRecord6(value) || typeof value.dir !== "string") {
     throw new InspectionError("package entry is malformed");
   }
   if (value.dir.startsWith("/") || value.dir.split("/").includes("..")) {
@@ -72845,13 +72919,13 @@ function parsePackage(value) {
     private: typeof value.private === "boolean" ? value.private : void 0,
     scripts: stringRecord(value.scripts),
     packageManager: optionalString2(value.packageManager),
-    publishConfig: isRecord5(value.publishConfig) ? value.publishConfig : void 0,
+    publishConfig: isRecord6(value.publishConfig) ? value.publishConfig : void 0,
     engines: stringRecord(value.engines),
     hasWorkspaces: typeof value.hasWorkspaces === "boolean" ? value.hasWorkspaces : void 0
   };
 }
 function parseInspection(json2) {
-  if (!isRecord5(json2)) {
+  if (!isRecord6(json2)) {
     throw new InspectionError("inspection is not an object");
   }
   if (typeof json2.commit !== "string" || !/^[0-9a-f]{40}$/.test(json2.commit)) {
@@ -72860,7 +72934,7 @@ function parseInspection(json2) {
   if (!Array.isArray(json2.packages)) {
     throw new InspectionError("inspection has no packages list");
   }
-  const details = isRecord5(json2.lockfileDetails) ? json2.lockfileDetails : {};
+  const details = isRecord6(json2.lockfileDetails) ? json2.lockfileDetails : {};
   return {
     commit: json2.commit,
     lockfiles: Array.isArray(json2.lockfiles) ? json2.lockfiles.filter((entry) => typeof entry === "string") : [],
@@ -73868,7 +73942,7 @@ var ENTRY_POINT_FIELDS = [
   "typings",
   "imports"
 ];
-function isRecord6(value) {
+function isRecord7(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function readManifest(tarball) {
@@ -73881,14 +73955,14 @@ function readManifest(tarball) {
   }
   try {
     const parsed = JSON.parse(entry.content.toString("utf8"));
-    return isRecord6(parsed) ? { ok: true, manifest: parsed } : { ok: false, problem: "package.json is not an object" };
+    return isRecord7(parsed) ? { ok: true, manifest: parsed } : { ok: false, problem: "package.json is not an object" };
   } catch {
     return { ok: false, problem: "package.json is not valid JSON" };
   }
 }
 function stringMap(value) {
   const out = {};
-  if (isRecord6(value)) {
+  if (isRecord7(value)) {
     for (const [key, entry] of Object.entries(value)) {
       if (typeof entry === "string") {
         out[key] = entry;
@@ -73906,7 +73980,7 @@ function stringMap(value) {
 function canonical(value) {
   return JSON.stringify(
     value,
-    (_key, entry) => isRecord6(entry) ? Object.fromEntries(Object.entries(entry).sort(([a2], [b2]) => a2.localeCompare(b2))) : entry
+    (_key, entry) => isRecord7(entry) ? Object.fromEntries(Object.entries(entry).sort(([a2], [b2]) => a2.localeCompare(b2))) : entry
   );
 }
 function same(a2, b2) {
@@ -74424,6 +74498,7 @@ function buildVerdict(input) {
 // ../packages/core/src/check/run.ts
 var defaultDeps = {
   fetchPublished,
+  fetchStaged,
   fetchRegistryKeys,
   verifyProvenance,
   rebuildPackage
@@ -74485,8 +74560,24 @@ async function runCheck(options, deps = defaultDeps) {
     env: options.env,
     npmrcPaths: options.npmrcPaths
   };
-  log(`fetching ${options.spec}`);
-  const artifact = await deps.fetchPublished(options.spec, registryOptions);
+  let artifact;
+  if (options.stageId) {
+    log(`fetching staged version ${options.stageId}`);
+    artifact = await deps.fetchStaged(options.stageId, registryOptions);
+    if (options.spec) {
+      const expected = parseSpec(options.spec);
+      if (expected.name !== artifact.name || expected.version !== artifact.version) {
+        throw new ToolError(
+          `Staged ${options.stageId} is ${artifact.name}@${artifact.version}, not ${options.spec}`
+        );
+      }
+    }
+  } else if (options.spec) {
+    log(`fetching ${options.spec}`);
+    artifact = await deps.fetchPublished(options.spec, registryOptions);
+  } else {
+    throw new ToolError("Give a package as <name>@<version>, or --stage <id> for a staged version");
+  }
   const registry = artifact.origin.registry;
   let registryKeys = null;
   try {
@@ -74770,15 +74861,22 @@ function parseInputs(getInput2, context4) {
       `releaseproof refuses to run on ${context4.eventName}: that event exposes repository secrets to contributor-controlled code. Run it on release, push, workflow_dispatch or workflow_run instead.`
     );
   }
+  const stageInput = getInput2("stage").trim().toLowerCase();
+  if (stageInput && !STAGE_ID_RE.test(stageInput)) {
+    throw new ToolError(`Input "stage" must be a stage id (UUID), got "${stageInput}"`);
+  }
   const manifest = readWorkspaceManifest(context4.workspace);
   const name = getInput2("package").trim() || manifest.name;
   const version = getInput2("version").trim() || manifest.version;
-  if (!name || !version) {
+  let spec;
+  if (name && version) {
+    const parsed = parseSpec(`${name}@${version}`);
+    spec = `${parsed.name}@${parsed.version}`;
+  } else if (!stageInput) {
     throw new ToolError(
       'Inputs "package" and "version" are required when the checkout has no package.json with a name and version'
     );
   }
-  const spec = parseSpec(`${name}@${version}`);
   const repoInput = getInput2("repo").trim().replace(/\/+$/, "").replace(/\.git$/, "");
   if (repoInput && !GITHUB_REPOSITORY_RE2.test(repoInput)) {
     throw new ToolError(
@@ -74811,7 +74909,8 @@ function parseInputs(getInput2, context4) {
     );
   }
   return {
-    spec: `${spec.name}@${spec.version}`,
+    spec,
+    stageId: stageInput || void 0,
     repository: repoInput || void 0,
     commit: commitInput || void 0,
     registry: getInput2("registry").trim() || void 0,
@@ -74906,6 +75005,7 @@ async function runAction(io2) {
   try {
     report = await io2.check({
       spec: inputs.spec,
+      stageId: inputs.stageId,
       registry: inputs.registry,
       repository: inputs.repository,
       commit: inputs.commit,
