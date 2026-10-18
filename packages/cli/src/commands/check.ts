@@ -2,10 +2,10 @@ import {
   type CheckOptions,
   type CheckReport,
   ExitCode,
+  formatReport,
   runCheck,
   ToolError,
 } from "@releaseproof/core";
-import { formatReport } from "../format.js";
 
 export interface CheckCommandOptions {
   registry?: string | undefined;

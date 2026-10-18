@@ -23,5 +23,6 @@ export * from "./rebuild/source.js";
 export * from "./registry/auth.js";
 export * from "./registry/client.js";
 export * from "./registry/spec.js";
+export * from "./report/text.js";
 export * from "./rules/index.js";
 export * from "./verdict/verdict.js";

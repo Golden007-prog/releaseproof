@@ -1,6 +1,6 @@
-import type { CheckReport } from "@releaseproof/core";
 import { describe, expect, it } from "vitest";
-import { formatReport } from "./format.js";
+import type { CheckReport } from "../check/run.js";
+import { formatReport } from "./text.js";
 
 const commit = "7d2900eca1c22b3f87c13987c8d4b7c9a29b733a";
 

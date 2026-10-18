@@ -1,4 +1,5 @@
-import type { CheckReport, Finding } from "@releaseproof/core";
+import type { CheckReport } from "../check/run.js";
+import type { Finding } from "../rules/types.js";
 
 export interface FormatOptions {
   /** Lines of each patch to show before truncating. */
