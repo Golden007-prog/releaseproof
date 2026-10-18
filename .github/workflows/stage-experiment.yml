@@ -1,0 +1,119 @@
+name: Staged publishing experiment
+
+# Answers two open questions from docs/spike-npm.md section 6 with a throwaway package:
+#   1. Does the registry expose attestations for a STAGED version before approval?
+#   2. What do `npm stage view` and the raw /-/stage/<id> endpoint return?
+# It stages @ujjwalv01/releaseproof-stage-test with provenance and inspects it. Nothing is
+# ever approved or published; the staged item is rejected by hand afterwards (reject needs
+# 2FA, which a token cannot provide). Manual trigger only.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to stage (a version that was staged and rejected before may be reusable; bump if not)
+        required: true
+        default: "0.0.1"
+
+permissions:
+  contents: read
+  id-token: write # lets npm mint the provenance attestation for the staged version
+
+env:
+  PACKAGE: "@ujjwalv01/releaseproof-stage-test"
+
+jobs:
+  stage:
+    name: Stage, inspect, never approve
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # Staged publishing needs npm 11.15+; Node 22 ships an older npm.
+      - name: Use a current npm
+        run: |
+          npm install -g npm@latest
+          npm --version
+          npm stage --help | head -5
+
+      - name: Create the throwaway package
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p /tmp/pkg && cd /tmp/pkg
+          node -e '
+            const fs = require("node:fs");
+            fs.writeFileSync("package.json", JSON.stringify({
+              name: process.env.PACKAGE,
+              version: process.env.VERSION,
+              description: "Throwaway package for the releaseproof staged-publishing experiment. Never approved.",
+              license: "MIT",
+              main: "index.js",
+              repository: { type: "git", url: "git+https://github.com/ujjwalv01/releaseproof.git" },
+            }, null, 2) + "\n");
+            fs.writeFileSync("index.js", "module.exports = \"releaseproof stage experiment\";\n");
+          '
+          cat package.json
+
+      - name: Stage with provenance
+        working-directory: /tmp/pkg
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_STAGE_TOKEN }}
+        run: |
+          npm stage publish --access public --provenance --json | tee /tmp/stage-publish.json
+
+      - name: Inspect the staged version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_STAGE_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p /tmp/out && cd /tmp/out
+          npm stage list "$PACKAGE" --json | tee list.json
+          STAGE_ID=$(node -e '
+            const items = JSON.parse(require("node:fs").readFileSync("list.json", "utf8"));
+            const mine = items.filter((i) => i.packageName === process.env.PACKAGE && i.version === process.env.VERSION);
+            console.log(mine.at(-1)?.id ?? "");
+          ')
+          echo "STAGE_ID=$STAGE_ID" >> "$GITHUB_ENV"
+          test -n "$STAGE_ID"
+          echo "stage id: $STAGE_ID"
+          npm stage view "$STAGE_ID" --json | tee view.json
+          curl -sS -H "Authorization: Bearer $NODE_AUTH_TOKEN" "https://registry.npmjs.org/-/stage/$STAGE_ID" | tee raw-stage.json; echo
+          ENCODED=$(node -e 'console.log(process.env.PACKAGE.replace("/", "%2f"))')
+          echo "attestations endpoint for the staged version:"
+          curl -sS -o attestations.json -w "HTTP %{http_code}\n" "https://registry.npmjs.org/-/npm/v1/attestations/$ENCODED@$VERSION"
+          echo "attestations endpoint with the token:"
+          curl -sS -o attestations-auth.json -w "HTTP %{http_code}\n" -H "Authorization: Bearer $NODE_AUTH_TOKEN" "https://registry.npmjs.org/-/npm/v1/attestations/$ENCODED@$VERSION"
+          echo "public packument for the package:"
+          curl -sS -o packument.json -w "HTTP %{http_code}\n" "https://registry.npmjs.org/$ENCODED"
+          npm stage download "$STAGE_ID"
+          ls -la
+          for f in *.tgz; do echo "== $f"; tar -tzf "$f"; done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: stage-experiment
+          path: |
+            /tmp/stage-publish.json
+            /tmp/out
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Staged publishing experiment"
+            echo
+            echo "Package: \`$PACKAGE@${{ inputs.version }}\`, stage id: \`${STAGE_ID:-unknown}\`"
+            echo
+            echo "Download the \`stage-experiment\` artifact for the JSON responses."
+            echo
+            echo "**Clean up (needs 2FA, do it locally):** \`npm stage reject ${STAGE_ID:-<id>}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
