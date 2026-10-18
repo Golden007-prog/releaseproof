@@ -1,8 +1,9 @@
 # Design: the GitHub Action (Phase 4)
 
 Status: implemented 2026-10-18 under `action/`; self-tested by
-`.github/workflows/action-self-test.yml`. Marketplace listing is pending the decision on
-where `action.yml` lives (the Marketplace requires it at the repository root).
+`.github/workflows/action-self-test.yml`. `action.yml` lives at the repository root (the
+Marketplace requires that) and runs the committed bundle `action/dist/index.js`, so users
+write `uses: ujjwalv01/releaseproof@<sha>`.
 
 ## 1. What it does
 
@@ -58,7 +59,7 @@ jobs:
       - uses: actions/checkout@<sha>
         with:
           persist-credentials: false
-      - uses: ujjwalv01/releaseproof/action@<sha>
+      - uses: ujjwalv01/releaseproof@<sha>
         with:
           create-issue: "false"
       - uses: actions/upload-artifact@<sha>

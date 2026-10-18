@@ -116,7 +116,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Check the staged version against this commit
-        uses: ./action
+        uses: ./ # action.yml at the repository root
         with:
           package: releaseproof
           version: ${{ needs.stage.outputs.version }}

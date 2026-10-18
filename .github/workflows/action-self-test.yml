@@ -23,7 +23,7 @@ jobs:
 
       - name: Check a release that must match
         id: check
-        uses: ./action
+        uses: ./ # action.yml at the repository root
         with:
           package: sigstore
           version: 5.0.0
