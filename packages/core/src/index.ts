@@ -1,19 +1,9 @@
-/**
- * Process exit codes shared by the CLI and the GitHub Action.
- * Anything that is not a clean MATCH must be non-zero, so CI fails closed.
- */
-export const ExitCode = {
-  Match: 0,
-  Differs: 1,
-  ToolError: 2,
-} as const;
-
-export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
-
+export * from "./check/run.js";
 export * from "./diff/compare.js";
 export * from "./diff/tarball.js";
 export * from "./diff/text.js";
 export * from "./errors.js";
+export * from "./exit-code.js";
 export * from "./fetch/digests.js";
 export * from "./fetch/published.js";
 export * from "./fetch/staged.js";
@@ -33,3 +23,5 @@ export * from "./rebuild/source.js";
 export * from "./registry/auth.js";
 export * from "./registry/client.js";
 export * from "./registry/spec.js";
+export * from "./rules/index.js";
+export * from "./verdict/verdict.js";
