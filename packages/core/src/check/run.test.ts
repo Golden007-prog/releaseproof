@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { FIXTURE_REPOSITORY, verifiedProvenance } from "../../test/context.js";
 import { packFixture } from "../../test/tarballs.js";
-import { ToolError } from "../errors.js";
 import { computeDigests } from "../fetch/digests.js";
 import type { ReleaseArtifact } from "../fetch/types.js";
 import type { ProvenanceResult } from "../provenance/types.js";
@@ -130,13 +129,21 @@ describe("runCheck", () => {
     expect(report.verdict.summary).toContain("not certified by provenance");
   });
 
-  it("refuses --repo without --commit when there is no provenance", async () => {
+  it("needs --repo to go with --commit, and treats --repo alone as an expectation only", async () => {
     await expect(
       runCheck(
-        { spec: "@releaseproof/fixture@1.0.0", repository: FIXTURE_REPOSITORY },
+        { spec: "@releaseproof/fixture@1.0.0", commit: "b".repeat(40) },
         depsFor({ release: "clean", provenance: missing }),
       ),
-    ).rejects.toThrow(ToolError);
+    ).rejects.toThrow(/--commit needs --repo/);
+    const deps = depsFor({ release: "clean", provenance: missing });
+    const report = await runCheck(
+      { spec: "@releaseproof/fixture@1.0.0", repository: FIXTURE_REPOSITORY },
+      deps,
+    );
+    expect(report.verdict.status).toBe("could-not-verify");
+    expect(report.source).toBeUndefined();
+    expect(deps.calls.rebuild).toHaveLength(0);
   });
 
   it("treats --repo as an expectation when provenance is verified", async () => {

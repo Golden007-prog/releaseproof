@@ -134,7 +134,10 @@ function diffReport(diff: DiffResult): DiffReport {
   };
 }
 
-/** Decides where to rebuild from: certified provenance first, else what the user named. */
+/**
+ * Decides where to rebuild from: certified provenance first, else the commit the user named
+ * together with its repository. `repository` on its own is only an expectation.
+ */
 export function chooseSource(
   provenance: ProvenanceResult,
   options: CheckOptions,
@@ -143,17 +146,15 @@ export function chooseSource(
   if (certified) {
     return certified;
   }
-  if (options.repository && options.commit) {
+  if (options.commit) {
+    if (!options.repository) {
+      throw new ToolError("--commit needs --repo to say which repository to rebuild from");
+    }
     return validateSource({
       repository: options.repository,
       commit: options.commit,
       verified: false,
     });
-  }
-  if (options.repository || options.commit) {
-    throw new ToolError(
-      "Without verified provenance both --repo and --commit are needed to know what to rebuild",
-    );
   }
   return undefined;
 }
