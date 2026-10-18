@@ -101,6 +101,26 @@ Commands: `npm pack --pack-destination /work/out`, `pnpm pack --pack-destination
 `yarn pack --out /work/out/package.tgz` (Berry), `yarn pack --filename …` (classic).
 Any remaining package.json difference is shown as a change.
 
+**Learned from real packages (2026-10-18).** `pnpm --filter <name>` never matches the
+workspace root, so a root pnpm package is built with a plain `pnpm run build`. Package
+scripts call `pnpm`/`yarn` by name (tsx's `prepack` runs `pnpm build`), so the install
+stage writes Corepack shims into `/work/home/bin` and caches the exact version
+(`corepack install -g`), and every stage puts that directory on `PATH`. Corepack refuses to
+run in a project whose `packageManager` field it cannot parse (zod: `nub@0.8.3`), so
+`COREPACK_ENABLE_PROJECT_SPEC=0` is set; we always name the exact tool ourselves. Release
+tooling such as semantic-release sets the version at publish time (tsx commits
+`0.0.0-semantic-release`), so when the commit's version differs from the release the build
+stage runs `npm pkg set version=<released>` before packing; the low `version-not-in-source`
+finding still records it.
+
+Lerna repositories without npm `workspaces` (actions/toolkit) keep a lockfile per package
+and build with `lerna run <script>` at the root: `lerna.json` counts as a workspace marker,
+the root build script is parsed for the per-package script name (`tsc` in toolkit's case),
+the package's own `npm ci` runs after the root one, and only that package's script runs.
+Memory: tsup's `.d.ts` worker ran out of JS heap in a 3.9 GB Docker Desktop VM while the same
+build passes on GitHub's 7 GB runners; the container limit is exposed as `--memory` /
+the `memory` input (default 4g), and the VM must have at least that much.
+
 ## 5. Comparison and normalization
 
 Both tarballs are parsed into `path → { type, size, mode, sha256, content? }` maps; the

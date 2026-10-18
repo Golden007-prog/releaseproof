@@ -230,7 +230,7 @@ the signature is valid because the Rekor entry's `integratedTime` falls inside i
 
 | Package | Provenance | Trigger / ref | Note |
 | --- | --- | --- | --- |
-| vitest 5.0.5, vite 8.3.4, @biomejs/biome 2.5.15, esbuild 0.28.2, tsx 4.23.15, @tanstack/query-core 5.104.3 | v1 | `push` / `refs/heads/main|master` | |
+| vitest 5.0.5, vite 8.3.4, @biomejs/biome 2.5.15, esbuild 0.28.2, tsx 4.23.15, @tanstack/query-core 5.104.3 | v1 | `push` / `refs/heads/main` or `master` | |
 | tsup 9.0.0, next 16.4.2, axios 1.20.0 | v1 | `push` / `refs/tags/vX.Y.Z` | tsup signed by a reusable workflow in `sxzz/workflows` |
 | express 5.3.0 | v1 | `release` / `refs/tags/v5.3.0` | |
 | react 19.3.1, zod 4.6.7, @actions/core 3.0.1 | v1 | `workflow_dispatch` / branch | react: `refs/heads/releases/19.3.x` |
@@ -290,14 +290,28 @@ Details that shape the design:
 | D11 | Expose `tufCachePath`/`tufForceCache` as options (`--offline` later); default allows the TUF refresh. | Determinism vs. freshness of the trust root; the refresh is needed for correct verification. |
 | D12 | SLSA v0.2 / GitLab provenance → `unsupported` (reported as could-not-verify) in v1. | Not seen on npm for GitHub Actions; avoid half-support. |
 
-## 6. Open questions (need a live experiment with Ujjwal's npm account; nothing published without explicit OK)
+## 6. Open questions — answered by a live experiment (2026-10-18)
 
-1. Does `GET /-/stage/{id}` (or the tarball) expose provenance/attestations for a **staged**
-   version before approval? Plan: `npm stage publish` a throwaway scoped package from a GitHub
-   Action with trusted publishing, run `npm stage view --json`, download, then
-   `npm stage reject`. Until then, staged checks run **without provenance** and say so.
-2. What is the minimum granular-token permission for `stage list/view/download`
-   (read-only vs. publish)? Affects the Action's token advice in Phase 4/5.
+`.github/workflows/stage-experiment.yml` staged `@ujjwalv01/releaseproof-stage-test@0.0.1`
+from GitHub Actions with `npm stage publish --access public --provenance --json` (npm 12,
+a granular access token), inspected it, and the staged item was then rejected by hand.
+
+1. **Attestations for a staged version are not exposed before approval.**
+   `GET /-/npm/v1/attestations/{name}@{version}` is 404 with and without the token, and the
+   package has no packument yet (404). Yet npm *did* generate the provenance at stage time:
+   "Provenance statement published to transparency log: logIndex=3309737268". The
+   attestation exists in Rekor; only the registry's endpoint hides it until approval.
+   Consequence: staged checks run without provenance and say so (`--repo`/`--commit` name
+   the source). Follow-up idea: look the DSSE entry up in Rekor by the tarball digest and
+   verify it the same way — that would give staged checks certified provenance.
+2. **A "Read and write (stage only)" granular token is enough** for `npm stage publish`,
+   `list`, `view` and `download`. npm's token form now offers that permission explicitly
+   and recommends it over direct publish.
+
+Also observed: `npm stage publish --json` prints `stageId`, the sha512 `integrity`, the
+`shasum` and the file list; `npm stage list/view` items carry `access` and a `status`
+(`validating` right after staging) in addition to the fields in section 3.2; the
+`stage download` tarball's SHA-1 and SHA-512 match the values printed at stage time.
 
 ## 7. Sources
 
