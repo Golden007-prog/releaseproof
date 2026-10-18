@@ -1,0 +1,50 @@
+name: Action self-test
+
+# Runs the committed action bundle for real: rebuilds a known-good release in Docker on a
+# GitHub-hosted runner and expects MATCHES SOURCE. Never runs on pull_request_target.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  self-test:
+    name: releaseproof action on sigstore@5.0.0
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check a release that must match
+        id: check
+        uses: ./action
+        with:
+          package: sigstore
+          version: 5.0.0
+          # The action defaults "repo" to this repository; sigstore is built elsewhere.
+          repo: https://github.com/sigstore/sigstore-js
+          commit: ""
+          node: "22"
+          report-path: releaseproof-report.json
+
+      - name: Assert the outputs
+        env:
+          VERDICT: ${{ steps.check.outputs.verdict }}
+          EXIT_CODE: ${{ steps.check.outputs.exit-code }}
+        run: |
+          echo "verdict=$VERDICT exit-code=$EXIT_CODE"
+          test "$VERDICT" = "matches-source"
+          test "$EXIT_CODE" = "0"
+          test -s releaseproof-report.json
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: releaseproof-report
+          path: releaseproof-report.json

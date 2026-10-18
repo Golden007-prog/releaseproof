@@ -46,3 +46,10 @@ jobs:
       - run: pnpm test
       - name: Smoke test CLI
         run: node packages/cli/dist/index.js --version
+      # The action runs from its committed bundle; a stale one would ship old code.
+      - name: Action bundle must be committed up to date
+        run: |
+          if ! git diff --exit-code --stat -- action/dist; then
+            echo "::error::action/dist is stale: run 'pnpm build' and commit action/dist"
+            exit 1
+          fi

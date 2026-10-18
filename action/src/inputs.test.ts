@@ -1,0 +1,103 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { ToolError } from "@releaseproof/core";
+import { describe, expect, it } from "vitest";
+import { type ActionContext, parseInputs } from "./inputs.js";
+
+const sha = "a".repeat(40);
+
+function workspaceWith(manifest: unknown): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "releaseproof-action-"));
+  writeFileSync(path.join(dir, "package.json"), JSON.stringify(manifest));
+  return dir;
+}
+
+function context(overrides: Partial<ActionContext> = {}): ActionContext {
+  return {
+    eventName: "release",
+    repository: "ujjwalv01/releaseproof",
+    serverUrl: "https://github.com",
+    sha,
+    workspace: workspaceWith({ name: "releaseproof", version: "1.2.3" }),
+    ...overrides,
+  };
+}
+
+function inputs(values: Record<string, string>) {
+  return (name: string) => values[name] ?? "";
+}
+
+describe("parseInputs", () => {
+  it("defaults package and version from the checkout's package.json", () => {
+    const parsed = parseInputs(
+      inputs({ repo: "https://github.com/ujjwalv01/releaseproof", commit: sha, token: "t" }),
+      context(),
+    );
+    expect(parsed).toMatchObject({
+      spec: "releaseproof@1.2.3",
+      repository: "https://github.com/ujjwalv01/releaseproof",
+      commit: sha,
+      failOn: "non-zero",
+      createIssue: false,
+      issueLabels: [],
+      reportPath: "releaseproof-report.json",
+      token: "t",
+    });
+  });
+
+  it("prefers explicit inputs and validates them with the CLI's rules", () => {
+    const parsed = parseInputs(
+      inputs({
+        package: "@scope/pkg",
+        version: "2.0.0",
+        node: "24",
+        "fail-on": "differs",
+        "create-issue": "TRUE",
+        "issue-labels": "security, releaseproof ,",
+        "report-path": "out/report.json",
+        repo: "https://github.com/o/r.git/",
+      }),
+      context(),
+    );
+    expect(parsed).toMatchObject({
+      spec: "@scope/pkg@2.0.0",
+      nodeMajor: 24,
+      failOn: "differs",
+      createIssue: true,
+      issueLabels: ["security", "releaseproof"],
+      reportPath: "out/report.json",
+      repository: "https://github.com/o/r",
+    });
+    expect(() => parseInputs(inputs({ version: "latest" }), context())).toThrow(/exact version/);
+  });
+
+  it("refuses to run on pull_request_target", () => {
+    expect(() => parseInputs(inputs({}), context({ eventName: "pull_request_target" }))).toThrow(
+      /refuses to run on pull_request_target/,
+    );
+  });
+
+  it("rejects malformed repo, commit, node, fail-on, create-issue and report-path", () => {
+    const bad: Array<[Record<string, string>, RegExp]> = [
+      [{ repo: "https://gitlab.com/o/r" }, /must look like https:\/\/github.com/],
+      [{ commit: "abc" }, /full 40-character SHA/],
+      [{ node: "twenty" }, /Node.js major/],
+      [{ "fail-on": "sometimes" }, /non-zero, differs or never/],
+      [{ "create-issue": "yes" }, /true or false/],
+      [{ "report-path": "../escape.json" }, /relative path inside the workspace/],
+      [{ "report-path": "/tmp/x.json" }, /relative path inside the workspace/],
+    ];
+    for (const [values, message] of bad) {
+      expect(() => parseInputs(inputs(values), context()), JSON.stringify(values)).toThrow(message);
+    }
+  });
+
+  it("requires package and version when the workspace has no usable package.json", () => {
+    const empty = mkdtempSync(path.join(tmpdir(), "releaseproof-action-empty-"));
+    expect(() => parseInputs(inputs({}), context({ workspace: empty }))).toThrow(ToolError);
+    expect(
+      parseInputs(inputs({ package: "x", version: "1.0.0" }), context({ workspace: empty })).spec,
+    ).toBe("x@1.0.0");
+  });
+});

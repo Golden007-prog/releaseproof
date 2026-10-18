@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+# The GitHub Action runs from its committed bundle; CI checks it is up to date.
+!action/dist/
 *.tsbuildinfo
 
 # Test and coverage output

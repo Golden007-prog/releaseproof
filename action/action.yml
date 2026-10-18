@@ -1,0 +1,71 @@
+name: releaseproof
+description: Verify that an npm release matches its source before you trust it
+author: Ujjwal Verma
+branding:
+  icon: shield
+  color: green
+
+inputs:
+  package:
+    description: Package name. Defaults to "name" in the checkout's package.json.
+    required: false
+  version:
+    description: Exact version to check. Defaults to "version" in the checkout's package.json.
+    required: false
+  repo:
+    description: Repository the release must have been built from. Any other repository is a critical finding.
+    required: false
+    default: ${{ github.server_url }}/${{ github.repository }}
+  commit:
+    description: Commit to rebuild from when the version has no verified provenance. Empty disables that fallback.
+    required: false
+    default: ${{ github.sha }}
+  registry:
+    description: Registry base URL.
+    required: false
+    default: https://registry.npmjs.org/
+  node:
+    description: Node.js major to build with. Defaults to the version the release workflow used.
+    required: false
+  image:
+    description: Docker image for the build. Defaults to node:<major>-bookworm.
+    required: false
+  build-command:
+    description: Shell command to build with instead of the detected build script.
+    required: false
+  fail-on:
+    description: When to fail the job. "non-zero" (differs or could not verify), "differs" (only when it differs), or "never".
+    required: false
+    default: non-zero
+  create-issue:
+    description: Open an issue when the verdict is not MATCHES SOURCE. Needs "issues: write".
+    required: false
+    default: "false"
+  issue-labels:
+    description: Comma-separated labels for the issue.
+    required: false
+    default: releaseproof
+  report-path:
+    description: Where to write the full JSON report, relative to the workspace.
+    required: false
+    default: releaseproof-report.json
+  token:
+    description: Token used only to open the issue.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  verdict:
+    description: matches-source, differs-from-source or could-not-verify
+  exit-code:
+    description: 0 matches, 1 differs, 2 could not verify
+  summary:
+    description: One-line verdict
+  report-path:
+    description: Path of the JSON report
+  issue-url:
+    description: URL of the issue, when one was opened
+
+runs:
+  using: node24
+  main: dist/index.js
