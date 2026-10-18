@@ -34,11 +34,14 @@ No LLM, no API key, no server. Same input, same answer, every time.
 
 ## Usage
 
-Not published yet; from a checkout, after `pnpm install && pnpm build`:
+Needs Node 22.12+ and Docker. No install step:
 
 ```sh
-node packages/cli/dist/index.js check sigstore@5.0.0
+npx releaseproof check sigstore@5.0.0
 ```
+
+From a checkout, after `pnpm install && pnpm build`, the same command is
+`node packages/cli/dist/index.js check sigstore@5.0.0`.
 
 What happens: the tarball and its attestations are fetched, the provenance is verified
 against the Sigstore trust root, the package is rebuilt from the certified commit inside a
@@ -93,7 +96,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ujjwalv01/releaseproof@main
+      - uses: ujjwalv01/releaseproof@v0.1.0 # or pin the commit SHA of the tag
 ```
 
 With no inputs, the package and version come from the checkout's `package.json`, the
