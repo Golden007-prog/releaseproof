@@ -2,7 +2,9 @@
 
 **Verify every npm release matches its source before you approve it.**
 
-> 🚧 Work in progress. Not ready for use yet.
+> Early release (0.1.x). The verdicts are deterministic and fail closed, but expect rough
+> edges; please [report](https://github.com/ujjwalv01/releaseproof/issues) packages it
+> cannot rebuild.
 
 ## The problem
 
@@ -106,24 +108,26 @@ is not. The action refuses to run on `pull_request_target`. All inputs are docum
 [action.yml](./action.yml); the security reasoning in
 [docs/design-action.md](./docs/design-action.md).
 
-## Planned packages
+## Packages
 
 | Package | What it is |
 | --- | --- |
-| `releaseproof` (CLI) | `npx releaseproof check <package>@<version>` |
-| GitHub Action | Runs on every release and posts the verdict as an issue |
+| [`releaseproof`](https://www.npmjs.com/package/releaseproof) (CLI) | `npx releaseproof check <package>@<version>` |
+| [releaseproof check](https://github.com/marketplace/actions/releaseproof-check) (Action) | Runs on every release and posts the verdict as a job summary or issue |
 
 ## Status
-
-Early development; no release yet. What works in the code today:
 
 - Fetching a published or staged version and verifying its provenance against the Sigstore
   trust root, with the certificate (not the build's own claim) as the source of truth.
 - Rebuilding a package from the certified commit in a hardened Docker container and
-  comparing it with the release file by file. `semver@7.8.5` and `sigstore@5.0.0` rebuild
-  bit-for-bit ([results](./docs/real-world-results.md)).
+  comparing it with the release file by file.
+- 35 rules with graded severity ([docs/rules.md](./docs/rules.md)) and a verdict that fails
+  closed: a failed rebuild is "could not verify", never "safe".
+- Tested against real releases: 11 popular packages rebuild bit-for-bit, 0 false alarms
+  ([results](./docs/real-world-results.md)).
 
-Next: the rules engine, the verdict and the `check` command.
+Not yet rebuilt for real: Yarn-based repositories and packages that need a package manager
+other than npm, pnpm or Yarn (those report "could not verify").
 
 ## Development
 
