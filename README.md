@@ -68,6 +68,36 @@ build afterwards. Every rule and severity is documented in [docs/rules.md](./doc
 
 Requirements: Node 22+, Docker. No account, no API key, no telemetry.
 
+## GitHub Action
+
+Run the same check after every release and read the verdict in the job summary:
+
+```yaml
+on:
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ujjwalv01/releaseproof/action@main
+```
+
+With no inputs, the package and version come from the checkout's `package.json`, the
+release must have been built from this repository, and the job fails unless the verdict is
+MATCHES SOURCE. Add `create-issue: "true"` (plus `issues: write`) to open an issue when it
+is not. The action refuses to run on `pull_request_target`. All inputs are documented in
+[action/action.yml](./action/action.yml); the security reasoning in
+[docs/design-action.md](./docs/design-action.md).
+
 ## Planned packages
 
 | Package | What it is |
