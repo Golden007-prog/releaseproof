@@ -1,8 +1,11 @@
-/// <reference path="../types/pacote.d.ts" />
-import pacote from "pacote";
-import { errorMessage, ToolError } from "../errors.js";
-import { registryKey, resolveToken } from "../registry/auth.js";
-import { normalizeRegistry, type RegistryOptions, registryJson } from "../registry/client.js";
+import { ToolError } from "../errors.js";
+import { resolveToken } from "../registry/auth.js";
+import {
+  normalizeRegistry,
+  type RegistryOptions,
+  registryBytes,
+  registryJson,
+} from "../registry/client.js";
 import { type PackageSpec, parseSpec } from "../registry/spec.js";
 import { base64ToHex, computeDigests, sha512FromIntegrity } from "./digests.js";
 import type {
@@ -12,15 +15,7 @@ import type {
   ReleaseArtifact,
 } from "./types.js";
 
-/** The subset of pacote we call. Injectable so tests never touch the network. */
-export interface PacoteLike {
-  manifest(spec: string, opts?: pacote.Options): Promise<pacote.Manifest>;
-  tarball(spec: string, opts?: pacote.Options): Promise<Buffer>;
-}
-
-export interface FetchPublishedOptions extends RegistryOptions {
-  pacote?: PacoteLike | undefined;
-}
+export type FetchPublishedOptions = RegistryOptions;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -79,17 +74,38 @@ export function readAttestations(body: unknown): AttestationsResponse | null {
   return { attestations };
 }
 
-function repositoryHint(repository: pacote.Manifest["repository"]): string | undefined {
+function repositoryHint(repository: unknown): string | undefined {
   if (typeof repository === "string") {
     return repository;
   }
-  return repository?.url;
+  return isRecord(repository) ? optionalString(repository.url) : undefined;
+}
+
+/** Registry path of a version document. Scoped names encode the slash, as npm does. */
+export function versionPath(spec: PackageSpec): string {
+  return `/${spec.name.replace("/", "%2f")}/${spec.version}`;
 }
 
 /**
- * Fetches a published version: manifest, integrity-checked tarball and its attestations.
- * The attestations are fetched by path against our configured registry, never via the
- * absolute URL in the manifest, because the manifest is untrusted data.
+ * The registry-relative path of an absolute URL the registry handed us, so the request goes
+ * to our configured registry whatever host the URL names. A registry base path such as
+ * `/npm/` is stripped when the URL shares it.
+ */
+export function registryRelativePath(registry: string, url: string, what: string): string {
+  let pathname: string;
+  try {
+    pathname = new URL(url).pathname;
+  } catch {
+    throw new ToolError(`Registry gave an invalid ${what} URL: ${url}`);
+  }
+  const base = new URL(normalizeRegistry(registry)).pathname;
+  return base !== "/" && pathname.startsWith(base) ? `/${pathname.slice(base.length)}` : pathname;
+}
+
+/**
+ * Fetches a published version: version document, integrity-checked tarball and its
+ * attestations. Everything is fetched by path against our configured registry; the absolute
+ * URLs in the version document are untrusted data and only lend their paths.
  */
 export async function fetchPublished(
   input: string | PackageSpec,
@@ -102,26 +118,18 @@ export async function fetchPublished(
     env: options.env,
     npmrcPaths: options.npmrcPaths,
   });
-  const client = options.pacote ?? pacote;
+  const requestOptions: RegistryOptions = { ...options, registry, token };
   const specString = `${spec.name}@${spec.version}`;
 
-  const pacoteOptions: pacote.Options = { registry, fullMetadata: true, before: null };
-  if (token) {
-    pacoteOptions[`${registryKey(registry)}:_authToken`] = token;
+  const manifest = await registryJson<unknown>(versionPath(spec), requestOptions);
+  if (manifest === null) {
+    throw new ToolError(`${specString} was not found on ${registry}`);
   }
-
-  let manifest: pacote.Manifest;
-  try {
-    manifest = await client.manifest(specString, pacoteOptions);
-  } catch (error) {
-    throw new ToolError(`Could not fetch ${specString} from ${registry}: ${errorMessage(error)}`, {
-      cause: error,
-    });
-  }
-  if (manifest.name !== spec.name || manifest.version !== spec.version) {
-    throw new ToolError(
-      `Registry returned ${manifest.name}@${manifest.version} when asked for ${specString}`,
-    );
+  if (!isRecord(manifest) || manifest.name !== spec.name || manifest.version !== spec.version) {
+    const got = isRecord(manifest)
+      ? `${String(manifest.name)}@${String(manifest.version)}`
+      : "an unexpected document";
+    throw new ToolError(`Registry returned ${got} when asked for ${specString}`);
   }
 
   const dist = readDist(manifest.dist);
@@ -130,16 +138,14 @@ export async function fetchPublished(
   if (!integrity || !expectedSha512) {
     throw new ToolError(`Registry did not provide a sha512 integrity for ${specString}`);
   }
-
-  let tarball: Buffer;
-  try {
-    tarball = await client.tarball(specString, { ...pacoteOptions, integrity });
-  } catch (error) {
-    throw new ToolError(`Could not download ${specString}: ${errorMessage(error)}`, {
-      cause: error,
-    });
+  if (!dist.tarball) {
+    throw new ToolError(`Registry did not provide a tarball URL for ${specString}`);
   }
-  // pacote already checked the integrity; re-checking is cheap and keeps us independent of it.
+
+  const tarball = await registryBytes(
+    registryRelativePath(registry, dist.tarball, "tarball"),
+    requestOptions,
+  );
   const digests = computeDigests(tarball);
   if (digests.sha512Base64 !== expectedSha512) {
     throw new ToolError(
@@ -151,8 +157,10 @@ export async function fetchPublished(
 
   let attestations: AttestationsResponse | null = null;
   if (dist.attestations) {
-    const attestationsPath = new URL(dist.attestations.url).pathname;
-    const body = await registryJson<unknown>(attestationsPath, { ...options, registry, token });
+    const body = await registryJson<unknown>(
+      registryRelativePath(registry, dist.attestations.url, "attestations"),
+      requestOptions,
+    );
     attestations = readAttestations(body);
   }
 
@@ -164,7 +172,10 @@ export async function fetchPublished(
     tarball,
     digests,
     dist,
-    hints: { gitHead: manifest.gitHead, repository: repositoryHint(manifest.repository) },
+    hints: {
+      gitHead: optionalString(manifest.gitHead),
+      repository: repositoryHint(manifest.repository),
+    },
     attestations,
   };
 }

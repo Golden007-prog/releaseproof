@@ -3,10 +3,11 @@ import { sigstoreAttestations } from "../../test/fixtures.js";
 import { ToolError } from "../errors.js";
 import { SLSA_PROVENANCE_V1 } from "../provenance/predicate.js";
 import { computeDigests } from "./digests.js";
-import { fetchPublished, type PacoteLike, readAttestations, readDist } from "./published.js";
+import { fetchPublished, readAttestations, readDist, registryRelativePath } from "./published.js";
 
 const tarball = Buffer.from("not really a tarball, but bytes are bytes");
 const digests = computeDigests(tarball);
+const REGISTRY = "https://registry.npmjs.org/";
 
 function manifestFor(overrides: Record<string, unknown> = {}) {
   return {
@@ -28,40 +29,51 @@ function manifestFor(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function fakePacote(
-  manifest: Record<string, unknown>,
-  bytes = tarball,
-): PacoteLike & { calls: unknown[][] } {
-  const calls: unknown[][] = [];
+type Route = () => Response;
+
+/** A fetch that answers by exact URL and records every request. */
+function registryFetch(routes: Record<string, Route>) {
+  const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+  const fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), headers: (init?.headers as Record<string, string>) ?? {} });
+    const route = routes[String(url)];
+    return route ? route() : new Response("no such route", { status: 500 });
+  }) as unknown as typeof globalThis.fetch;
+  return { fetch, calls };
+}
+
+const json =
+  (body: unknown, status = 200): Route =>
+  () =>
+    new Response(JSON.stringify(body), { status });
+const bytes =
+  (data: Buffer): Route =>
+  () =>
+    new Response(data, { status: 200 });
+
+function routesFor(manifest: unknown, options: { registry?: string; tarballData?: Buffer } = {}) {
+  const base = options.registry ?? REGISTRY;
   return {
-    calls,
-    manifest: async (spec, opts) => {
-      calls.push(["manifest", spec, opts]);
-      return manifest as Awaited<ReturnType<PacoteLike["manifest"]>>;
-    },
-    tarball: async (spec, opts) => {
-      calls.push(["tarball", spec, opts]);
-      return bytes;
-    },
+    [`${base}sigstore/5.0.0`]: json(manifest),
+    [`${base}sigstore/-/sigstore-5.0.0.tgz`]: bytes(options.tarballData ?? tarball),
+    [`${base}-/npm/v1/attestations/sigstore@5.0.0`]: json(sigstoreAttestations()),
   };
 }
 
-function fetchJson(body: unknown, status = 200): typeof fetch {
-  return vi.fn(
-    async () => new Response(JSON.stringify(body), { status }),
-  ) as unknown as typeof fetch;
-}
-
 describe("fetchPublished", () => {
-  it("returns the tarball, digests, dist, hints and attestations", async () => {
-    const pacote = fakePacote(manifestFor());
-    const fetch = fetchJson(sigstoreAttestations());
-    const artifact = await fetchPublished("sigstore@5.0.0", { pacote, fetch, token: "tok" });
+  it("fetches the version document, the tarball and the attestations with the token", async () => {
+    const { fetch, calls } = registryFetch(routesFor(manifestFor()));
+    const artifact = await fetchPublished("sigstore@5.0.0", {
+      fetch,
+      token: "tok",
+      env: {},
+      npmrcPaths: [],
+    });
 
-    expect(artifact.origin).toEqual({ kind: "published", registry: "https://registry.npmjs.org/" });
+    expect(artifact.origin).toEqual({ kind: "published", registry: REGISTRY });
     expect(artifact.name).toBe("sigstore");
     expect(artifact.purl).toBe("pkg:npm/sigstore@5.0.0");
-    expect(artifact.tarball).toBe(tarball);
+    expect(artifact.tarball.equals(tarball)).toBe(true);
     expect(artifact.digests).toEqual(digests);
     expect(artifact.dist?.signatures).toEqual([{ keyid: "SHA256:key", sig: "MEUC…" }]);
     expect(artifact.hints).toEqual({
@@ -69,86 +81,152 @@ describe("fetchPublished", () => {
       repository: "git+https://github.com/sigstore/sigstore-js.git",
     });
     expect(artifact.attestations?.attestations).toHaveLength(2);
-
-    // pacote gets full metadata, the token under npm's per-registry key, and the integrity.
-    const [, , manifestOpts] = pacote.calls[0] ?? [];
-    expect(manifestOpts).toMatchObject({
-      registry: "https://registry.npmjs.org/",
-      fullMetadata: true,
-      "//registry.npmjs.org/:_authToken": "tok",
-    });
-    const [, , tarballOpts] = pacote.calls[1] ?? [];
-    expect(tarballOpts).toMatchObject({ integrity: `sha512-${digests.sha512Base64}` });
+    expect(calls.map((c) => c.url)).toEqual([
+      `${REGISTRY}sigstore/5.0.0`,
+      `${REGISTRY}sigstore/-/sigstore-5.0.0.tgz`,
+      `${REGISTRY}-/npm/v1/attestations/sigstore@5.0.0`,
+    ]);
+    for (const call of calls) {
+      expect(call.headers.authorization).toBe("Bearer tok");
+    }
   });
 
-  it("fetches attestations by path on our registry, never on the host the manifest names", async () => {
-    const manifest = manifestFor();
-    (manifest.dist as { attestations: { url: string } }).attestations.url =
-      "https://evil.example/-/npm/v1/attestations/sigstore@5.0.0";
-    const fetch = fetchJson(sigstoreAttestations());
-    await fetchPublished("sigstore@5.0.0", {
-      pacote: fakePacote(manifest),
+  it("encodes the slash of scoped names in the version path", async () => {
+    const manifest = { ...manifestFor(), name: "@sigstore/verify", version: "4.1.2" };
+    const { fetch, calls } = registryFetch({
+      [`${REGISTRY}@sigstore%2fverify/4.1.2`]: json(manifest),
+      [`${REGISTRY}sigstore/-/sigstore-5.0.0.tgz`]: bytes(tarball),
+      [`${REGISTRY}-/npm/v1/attestations/sigstore@5.0.0`]: json(sigstoreAttestations()),
+    });
+    const artifact = await fetchPublished("@sigstore/verify@4.1.2", {
       fetch,
-      registry: "https://npm.example.com/npm/",
+      env: {},
+      npmrcPaths: [],
     });
-    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
-      "https://npm.example.com/npm/-/npm/v1/attestations/sigstore@5.0.0",
-    );
+    expect(artifact.purl).toBe("pkg:npm/%40sigstore/verify@4.1.2");
+    expect(calls[0]?.url).toBe(`${REGISTRY}@sigstore%2fverify/4.1.2`);
   });
 
-  it("reports null attestations when the registry has none (404)", async () => {
-    const artifact = await fetchPublished("sigstore@5.0.0", {
-      pacote: fakePacote(manifestFor()),
-      fetch: fetchJson("", 404),
-    });
-    expect(artifact.attestations).toBeNull();
+  it("fetches the tarball and attestations by path on our registry, whatever host the document names", async () => {
+    const manifest = manifestFor();
+    const dist = manifest.dist as { tarball: string; attestations: { url: string } };
+    dist.tarball = "https://evil.example/sigstore/-/sigstore-5.0.0.tgz";
+    dist.attestations.url = "https://evil.example/-/npm/v1/attestations/sigstore@5.0.0";
+    const { fetch, calls } = registryFetch(routesFor(manifest));
+    await fetchPublished("sigstore@5.0.0", { fetch, env: {}, npmrcPaths: [] });
+    expect(calls.map((c) => new URL(c.url).host)).toEqual([
+      "registry.npmjs.org",
+      "registry.npmjs.org",
+      "registry.npmjs.org",
+    ]);
   });
 
-  it("does not request attestations when dist has none", async () => {
+  it("keeps a private registry's base path exactly once", async () => {
+    const registry = "https://npm.example.com/npm/";
+    const manifest = manifestFor();
+    (manifest.dist as { tarball: string }).tarball =
+      "https://npm.example.com/npm/sigstore/-/sigstore-5.0.0.tgz";
+    const { fetch, calls } = registryFetch(routesFor(manifest, { registry }));
+    await fetchPublished("sigstore@5.0.0", { fetch, registry, env: {}, npmrcPaths: [] });
+    expect(calls[1]?.url).toBe("https://npm.example.com/npm/sigstore/-/sigstore-5.0.0.tgz");
+  });
+
+  it("reports null attestations when the registry has none (404), and skips the request when dist has none", async () => {
+    const { fetch } = registryFetch({
+      ...routesFor(manifestFor()),
+      [`${REGISTRY}-/npm/v1/attestations/sigstore@5.0.0`]: json("", 404),
+    });
+    expect(
+      (await fetchPublished("sigstore@5.0.0", { fetch, env: {}, npmrcPaths: [] })).attestations,
+    ).toBeNull();
+
     const manifest = manifestFor();
     delete (manifest.dist as Record<string, unknown>).attestations;
-    const fetch = fetchJson({});
+    const without = registryFetch(routesFor(manifest));
     const artifact = await fetchPublished("sigstore@5.0.0", {
-      pacote: fakePacote(manifest),
-      fetch,
+      fetch: without.fetch,
+      env: {},
+      npmrcPaths: [],
     });
     expect(artifact.attestations).toBeNull();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(without.calls).toHaveLength(2);
   });
 
   it("fails closed when the tarball does not match the integrity", async () => {
-    const pacote = fakePacote(manifestFor(), Buffer.from("different bytes"));
+    const { fetch } = registryFetch(
+      routesFor(manifestFor(), { tarballData: Buffer.from("different bytes") }),
+    );
     await expect(
-      fetchPublished("sigstore@5.0.0", { pacote, fetch: fetchJson({}) }),
+      fetchPublished("sigstore@5.0.0", { fetch, env: {}, npmrcPaths: [] }),
     ).rejects.toThrow(/does not match its integrity/);
   });
 
-  it("fails closed when the registry provides no sha512 integrity", async () => {
-    const manifest = manifestFor();
-    (manifest.dist as Record<string, unknown>).integrity = "sha1-abc";
-    await expect(
-      fetchPublished("sigstore@5.0.0", { pacote: fakePacote(manifest), fetch: fetchJson({}) }),
-    ).rejects.toThrow(/no.*sha512 integrity/i);
-  });
-
-  it("rejects a manifest for a different package or version", async () => {
+  it("fails closed when the registry provides no sha512 integrity or no tarball URL", async () => {
+    const noSha = manifestFor();
+    (noSha.dist as Record<string, unknown>).integrity = "sha1-abc";
     await expect(
       fetchPublished("sigstore@5.0.0", {
-        pacote: fakePacote(manifestFor({ version: "5.0.1" })),
-        fetch: fetchJson({}),
+        fetch: registryFetch(routesFor(noSha)).fetch,
+        env: {},
+        npmrcPaths: [],
       }),
-    ).rejects.toThrow(/returned sigstore@5.0.1 when asked for sigstore@5.0.0/);
+    ).rejects.toThrow(/no.*sha512 integrity/i);
+    const noTarball = manifestFor();
+    delete (noTarball.dist as Record<string, unknown>).tarball;
+    await expect(
+      fetchPublished("sigstore@5.0.0", {
+        fetch: registryFetch(routesFor(noTarball)).fetch,
+        env: {},
+        npmrcPaths: [],
+      }),
+    ).rejects.toThrow(/no.*tarball URL/i);
   });
 
-  it("wraps pacote failures in ToolError", async () => {
-    const pacote: PacoteLike = {
-      manifest: async () => {
-        throw new Error("E404 not found");
-      },
-      tarball: async () => tarball,
-    };
-    await expect(fetchPublished("nope@1.0.0", { pacote, fetch: fetchJson({}) })).rejects.toThrow(
-      ToolError,
+  it("rejects a document for a different package or version, and a missing version", async () => {
+    await expect(
+      fetchPublished("sigstore@5.0.0", {
+        fetch: registryFetch(routesFor(manifestFor({ version: "5.0.1" }))).fetch,
+        env: {},
+        npmrcPaths: [],
+      }),
+    ).rejects.toThrow(/returned sigstore@5.0.1 when asked for sigstore@5.0.0/);
+    const { fetch } = registryFetch({ [`${REGISTRY}sigstore/5.0.0`]: json("", 404) });
+    await expect(
+      fetchPublished("sigstore@5.0.0", { fetch, env: {}, npmrcPaths: [] }),
+    ).rejects.toThrow(/sigstore@5.0.0 was not found on https:\/\/registry.npmjs.org\//);
+  });
+
+  it("surfaces registry failures as ToolError", async () => {
+    const { fetch } = registryFetch({
+      [`${REGISTRY}sigstore/5.0.0`]: () => new Response("", { status: 503 }),
+    });
+    await expect(
+      fetchPublished("sigstore@5.0.0", { fetch, env: {}, npmrcPaths: [] }),
+    ).rejects.toThrow(ToolError);
+  });
+});
+
+describe("registryRelativePath", () => {
+  it("keeps the path for a root registry and strips a shared base path", () => {
+    expect(registryRelativePath(REGISTRY, "https://cdn.example/x/-/x-1.0.0.tgz", "tarball")).toBe(
+      "/x/-/x-1.0.0.tgz",
+    );
+    expect(
+      registryRelativePath(
+        "https://npm.example.com/npm/",
+        "https://npm.example.com/npm/x/-/x-1.0.0.tgz",
+        "tarball",
+      ),
+    ).toBe("/x/-/x-1.0.0.tgz");
+    expect(
+      registryRelativePath(
+        "https://npm.example.com/npm/",
+        "https://other.example/x/-/x-1.0.0.tgz",
+        "tarball",
+      ),
+    ).toBe("/x/-/x-1.0.0.tgz");
+    expect(() => registryRelativePath(REGISTRY, "not a url", "tarball")).toThrow(
+      /invalid tarball URL/,
     );
   });
 });
