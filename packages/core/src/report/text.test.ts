@@ -69,6 +69,23 @@ function report(overrides: Partial<CheckReport> = {}): CheckReport {
 }
 
 describe("formatReport", () => {
+  it.each(["ok", "failed"] as const)("shows the image digest for a %s rebuild", (status) => {
+    const imageDigest = `node@sha256:${"0123456789abcdef".repeat(4)}`;
+    const input = report({
+      rebuild: { ...report().rebuild, status, stages: [], imageDigest, durationMs: 1_000 },
+    });
+    const text = formatReport(input);
+    expect(text).toContain("             image digest node@sha256:0123456789abcdef…\n");
+    expect(text).not.toContain(imageDigest);
+    expect(input.rebuild?.imageDigest).toBe(imageDigest);
+    expect(JSON.parse(JSON.stringify(input)).rebuild.imageDigest).toBe(imageDigest);
+  });
+
+  it("omits the digest when Docker did not provide one", () => {
+    expect(formatReport(report())).not.toContain("image digest");
+    expect(formatReport(report({ rebuild: undefined }))).not.toContain("image digest");
+  });
+
   it("prints a compact, readable report for a match", () => {
     const text = formatReport(report());
     expect(text).toBe(`releaseproof check sigstore@5.0.0

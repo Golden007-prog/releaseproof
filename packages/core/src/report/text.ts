@@ -57,8 +57,14 @@ function rebuildLines(report: CheckReport): string {
   if (!rebuild) {
     return row("Rebuild", source ? "not run" : "not run (no source)");
   }
+  const digestLine = rebuild.imageDigest
+    ? cont(
+        `image digest ${rebuild.imageDigest.replace(/(sha256:[a-f0-9]{16})[a-f0-9]{48}$/i, "$1…")}`,
+      )
+    : "";
   if (rebuild.status !== "ok") {
     let out = row("Rebuild", `FAILED${duration(rebuild.durationMs)}  ${rebuild.failure ?? ""}`);
+    out += digestLine;
     const failed = [...rebuild.stages]
       .reverse()
       .find((stage) => stage.exitCode !== 0 || stage.timedOut);
@@ -80,6 +86,7 @@ function rebuildLines(report: CheckReport): string {
     rebuild.plan ? `build: ${rebuild.plan.buildSource}` : "",
   ].filter((part) => part !== "");
   let out = row("Rebuild", `OK${duration(rebuild.durationMs)}  ${parts.join(", ")}`);
+  out += digestLine;
   if (source && !source.verified) {
     out += cont(
       `from ${shortRepo(source.repository)}@${source.commit.slice(0, 7)} as given by --repo/--commit`,
