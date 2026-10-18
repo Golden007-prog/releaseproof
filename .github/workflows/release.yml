@@ -6,7 +6,10 @@ name: Release
 #      the catalog:/workspace: specifiers; npm would publish them literally), then
 #      npm stage publish <tarball> with provenance via trusted publishing (stage-only).
 #      Nothing goes live here.
-#   3. The staged version is checked by this repository's own action.
+#   3. The staged version is checked by this repository's own action. Downloading a staged
+#      tarball needs a registry token (the OIDC token cannot): repository secret
+#      NPM_STAGE_TOKEN = granular token limited to this package, "Read and write (stage only)".
+#      Missing secret = the job fails, never "safe" (issue #3).
 #   4. A maintainer approves with 2FA: npm stage approve <id>.
 # Armed once releaseproof exists on npm and its trusted publisher (stage-only) points at this
 # workflow file. Until then the stage job finds no package and skips.
@@ -138,8 +141,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Require the npm token for staged downloads
+        env:
+          NPM_STAGE_TOKEN: ${{ secrets.NPM_STAGE_TOKEN }}
+        run: |
+          if [ -z "$NPM_STAGE_TOKEN" ]; then
+            echo "::error::repository secret NPM_STAGE_TOKEN is not set; the staged tarball cannot be downloaded (see issue #3)"
+            exit 1
+          fi
       - name: Check the staged version against this commit
         uses: ./ # action.yml at the repository root
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_STAGE_TOKEN }} # read by the CLI's token resolution
         with:
           package: releaseproof
           version: ${{ needs.stage.outputs.version }}
