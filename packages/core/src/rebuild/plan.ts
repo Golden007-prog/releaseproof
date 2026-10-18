@@ -43,6 +43,13 @@ export interface BuildPlan {
   /** Undefined when nothing needs node_modules; `installSkipped` says why. */
   install: Command | undefined;
   installSkipped?: string | undefined;
+  /** A second install in the package directory, for Lerna repos without workspaces. */
+  installExtra?: Command | undefined;
+  /**
+   * The released version, applied to package.json before packing when the commit carries a
+   * different one (release tooling such as semantic-release sets it at publish time).
+   */
+  setVersion?: string | undefined;
   /** Runs dependency lifecycle scripts offline. Failure is logged, not fatal. */
   rebuildDeps: Command | undefined;
   build: Command | undefined;
@@ -186,7 +193,10 @@ function chooseManager(
       if (parsed) {
         return parsed;
       }
-      warnings.push(`ignoring unrecognised packageManager "${field}"`);
+      // Guessing another tool here fails later in confusing ways (zod uses "nub"); say so.
+      return {
+        unsupported: `package manager "${field}" is not supported (only npm, pnpm and yarn are)`,
+      };
     }
   }
   const lock = new Set(inspection.lockfiles);
@@ -263,7 +273,8 @@ export function planBuild(input: PlanInput): PlanResult {
   const rootDir = root ? REPO_DIR : `${REPO_DIR}/${pkg.dir}`;
   const pkgDir = pkg.dir === "." ? REPO_DIR : `${REPO_DIR}/${pkg.dir}`;
   const isWorkspace =
-    Boolean(root?.hasWorkspaces || inspection.hasPnpmWorkspace) && pkg.dir !== ".";
+    Boolean(root?.hasWorkspaces || inspection.hasPnpmWorkspace || inspection.hasLernaJson) &&
+    pkg.dir !== ".";
 
   let install: Command | undefined;
   let rebuildDeps: Command | undefined;
@@ -309,6 +320,18 @@ export function planBuild(input: PlanInput): PlanResult {
     }
   }
 
+  // Lerna repos without npm workspaces (actions/toolkit) install each package on its own.
+  let installExtra: Command | undefined;
+  if (manager.name === "npm" && isWorkspace && !root?.hasWorkspaces && pkgDir !== rootDir) {
+    const hasPackageLock = (pkg.lockfiles ?? []).some(
+      (name) => name === "package-lock.json" || name === "npm-shrinkwrap.json",
+    );
+    installExtra = {
+      argv: managerArgv(manager, hasPackageLock ? "ci" : "install", "--ignore-scripts"),
+      cwd: pkgDir,
+    };
+  }
+
   let build: Command | undefined;
   let buildSource: string;
   if (overrides.buildCommand) {
@@ -317,10 +340,13 @@ export function planBuild(input: PlanInput): PlanResult {
   } else if (pkg.scripts?.build) {
     switch (manager.name) {
       case "pnpm":
-        build = {
-          argv: managerArgv(manager, "--filter", `${target.name}...`, "run", "build"),
-          cwd: rootDir,
-        };
+        // --filter selects workspace projects; the workspace root itself is not one.
+        build = isWorkspace
+          ? {
+              argv: managerArgv(manager, "--filter", `${target.name}...`, "run", "build"),
+              cwd: rootDir,
+            }
+          : { argv: managerArgv(manager, "run", "build"), cwd: pkgDir };
         break;
       case "yarn-berry":
         build = isWorkspace
@@ -347,8 +373,15 @@ export function planBuild(input: PlanInput): PlanResult {
     }
     buildSource = `"build" script of ${pkg.dir === "." ? "the package" : pkg.dir}${build.cwd === rootDir && pkg.dir !== "." ? " (run from the root)" : ""}`;
   } else if (isWorkspace && root?.scripts?.build) {
-    build = { argv: managerArgv(manager, "run", "build"), cwd: rootDir };
-    buildSource = 'root "build" script';
+    // "lerna run tsc" at the root names the per-package script; run just ours.
+    const lernaScript = /^lerna run (\S+)/.exec(root.scripts.build)?.[1];
+    if (lernaScript && pkg.scripts?.[lernaScript]) {
+      build = { argv: managerArgv(manager, "run", lernaScript), cwd: pkgDir };
+      buildSource = `"${lernaScript}" script of ${pkg.dir} (named by the root lerna build)`;
+    } else {
+      build = { argv: managerArgv(manager, "run", "build"), cwd: rootDir };
+      buildSource = 'root "build" script';
+    }
   } else {
     build = undefined;
     buildSource = "no build script; packing the checkout as is";
@@ -390,6 +423,8 @@ export function planBuild(input: PlanInput): PlanResult {
       image,
       install,
       installSkipped,
+      installExtra,
+      setVersion: pkg.version === target.version ? undefined : target.version,
       rebuildDeps,
       build,
       buildSource,

@@ -252,7 +252,7 @@ export async function rebuildPackage(
           argv: ["bash", "-c", renderInstallScript(plan)],
           timeoutMs: timeouts.installMs,
         },
-        false,
+        true, // package managers print their errors on stdout as often as stderr
       );
       if (install.exitCode !== 0) {
         return fail(stageFailure("install", install));
@@ -342,6 +342,7 @@ export function pinManagerVersion(plan: BuildPlan, version: string | undefined):
     ...plan,
     manager: { ...plan.manager, spec: exact },
     install: plan.install ? pin(plan.install) : undefined,
+    installExtra: plan.installExtra ? pin(plan.installExtra) : undefined,
     rebuildDeps: plan.rebuildDeps ? pin(plan.rebuildDeps) : undefined,
     build: plan.build ? pin(plan.build) : undefined,
     pack: pin(plan.pack),

@@ -27,6 +27,7 @@ const inspection: RepoInspection = {
   nodeVersionFiles: {},
   hasYarnrcYml: false,
   hasPnpmWorkspace: false,
+  hasLernaJson: false,
   hasSubmodules: false,
   packages: [{ dir: ".", name: "tiny", version: "1.0.0", scripts: { build: "tsc" } }],
   workflow: "node-version: 20\n",

@@ -12,6 +12,7 @@ function inspection(overrides: Partial<RepoInspection> = {}): RepoInspection {
     nodeVersionFiles: {},
     hasYarnrcYml: false,
     hasPnpmWorkspace: false,
+    hasLernaJson: false,
     hasSubmodules: false,
     packages: [],
     workflow: null,
@@ -486,5 +487,100 @@ describe("planBuild: skipping the install stage", () => {
       plan(inspection({ packages: [{ ...single, scripts: {} }], lockfiles: ["pnpm-lock.yaml"] }))
         .install,
     ).toBeDefined();
+  });
+});
+
+describe("planBuild: pnpm root packages and released versions", () => {
+  it("builds a root pnpm package with a plain run, since --filter never matches the workspace root", () => {
+    const result = plan(
+      inspection({
+        packages: [{ ...single, packageManager: "pnpm@10.9.0" }],
+        lockfiles: ["pnpm-lock.yaml"],
+        lockfileDetails: { pnpm: "9.0" },
+      }),
+    );
+    expect(result.build).toEqual({
+      argv: ["corepack", "pnpm@10.9.0", "run", "build"],
+      cwd: REPO_DIR,
+    });
+  });
+
+  it("applies the released version before packing when the commit carries another one", () => {
+    const placeholder = { ...single, version: "0.0.0-semantic-release" };
+    expect(
+      plan(inspection({ packages: [placeholder] }), { name: "tiny", version: "4.23.15" })
+        .setVersion,
+    ).toBe("4.23.15");
+    expect(plan(inspection({ packages: [single] })).setVersion).toBeUndefined();
+  });
+});
+
+describe("planBuild: Lerna repositories without npm workspaces", () => {
+  const root: PackageInfo = {
+    dir: ".",
+    name: "root",
+    private: true,
+    scripts: { build: "lerna run tsc" },
+  };
+  const core: PackageInfo = {
+    dir: "packages/core",
+    name: "@actions/core",
+    version: "3.0.1",
+    scripts: { tsc: "tsc -p tsconfig.json" },
+    lockfiles: ["package-lock.json"],
+  };
+  const lerna = inspection({
+    packages: [root, core],
+    lockfiles: ["package-lock.json"],
+    hasLernaJson: true,
+  });
+
+  it("treats lerna.json as a workspace, installs the package itself, and runs the script the root lerna build names", () => {
+    const result = plan(lerna, { name: "@actions/core", version: "3.0.1" });
+    expect(result.install).toEqual({ argv: ["npm", "ci", "--ignore-scripts"], cwd: REPO_DIR });
+    expect(result.installExtra).toEqual({
+      argv: ["npm", "ci", "--ignore-scripts"],
+      cwd: `${REPO_DIR}/packages/core`,
+    });
+    expect(result.build).toEqual({ argv: ["npm", "run", "tsc"], cwd: `${REPO_DIR}/packages/core` });
+    expect(result.buildSource).toBe(
+      '"tsc" script of packages/core (named by the root lerna build)',
+    );
+  });
+
+  it("falls back to the root build when the package lacks the named script, and never adds a second install with npm workspaces", () => {
+    const other = { ...core, scripts: {} };
+    expect(
+      plan(inspection({ ...lerna, packages: [root, other] }), {
+        name: "@actions/core",
+        version: "3.0.1",
+      }),
+    ).toMatchObject({
+      build: { argv: ["npm", "run", "build"], cwd: REPO_DIR },
+      buildSource: 'root "build" script',
+    });
+    const withWorkspaces = inspection({
+      ...lerna,
+      packages: [{ ...root, hasWorkspaces: true }, core],
+    });
+    expect(
+      plan(withWorkspaces, { name: "@actions/core", version: "3.0.1" }).installExtra,
+    ).toBeUndefined();
+  });
+});
+
+describe("planBuild: unknown package managers", () => {
+  it("refuses a packageManager field it cannot run instead of guessing another tool", () => {
+    const result = planBuild({
+      inspection: inspection({
+        packages: [{ ...single, packageManager: "nub@0.8.3" }],
+        lockfiles: ["pnpm-lock.yaml"],
+      }),
+      target: { name: "tiny", version: "1.0.0" },
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason: 'package manager "nub@0.8.3" is not supported (only npm, pnpm and yarn are)',
+    });
   });
 });

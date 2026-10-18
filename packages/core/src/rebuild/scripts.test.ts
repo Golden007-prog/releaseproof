@@ -124,3 +124,42 @@ describe("tool version reporting", () => {
     expect(() => renderInstallScript({ ...plan, install: undefined })).toThrow(/no install step/);
   });
 });
+
+describe("tool shims and version override", () => {
+  it("installs Corepack shims for pnpm/yarn plans during the networked install stage", () => {
+    const script = renderInstallScript(plan);
+    expect(script).toContain("corepack enable --install-directory /work/home/bin");
+    expect(script).toContain("corepack install -g 'pnpm@10.4.1'");
+    expect(script).toContain('export PATH="/work/home/bin:$PATH"');
+    expect(script).toContain("export COREPACK_ENABLE_PROJECT_SPEC=0");
+    const npmPlan = {
+      ...plan,
+      manager: { name: "npm" as const, spec: undefined, source: "lockfile" },
+      install: { argv: ["npm", "ci", "--ignore-scripts"], cwd: REPO_DIR },
+    };
+    expect(renderInstallScript(npmPlan)).not.toContain("corepack install");
+  });
+
+  it("sets the released version right before packing, in the pack directory", () => {
+    const script = renderBuildScript({ ...plan, setVersion: "2.0.0" });
+    const setLine = "cd '/work/repo/packages/core' && 'npm' 'pkg' 'set' 'version=2.0.0'";
+    expect(script).toContain(setLine);
+    expect(script.indexOf(setLine)).toBeLessThan(script.indexOf("'run' 'build'"));
+    expect(script.indexOf(setLine)).toBeLessThan(script.indexOf("'pack'"));
+    expect(renderBuildScript(plan)).not.toContain("'pkg' 'set'");
+  });
+});
+
+describe("per-package install", () => {
+  it("runs the extra install after the root one", () => {
+    const script = renderInstallScript({
+      ...plan,
+      manager: { name: "npm", spec: undefined, source: "lockfile" },
+      install: { argv: ["npm", "ci", "--ignore-scripts"], cwd: REPO_DIR },
+      installExtra: { argv: ["npm", "ci", "--ignore-scripts"], cwd: `${REPO_DIR}/packages/core` },
+    });
+    expect(script.indexOf("cd '/work/repo' && 'npm' 'ci'")).toBeLessThan(
+      script.indexOf("cd '/work/repo/packages/core' && 'npm' 'ci'"),
+    );
+  });
+});

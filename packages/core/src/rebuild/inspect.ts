@@ -13,6 +13,8 @@ export interface PackageInfo {
   publishConfig?: Record<string, unknown> | undefined;
   engines?: Record<string, string> | undefined;
   hasWorkspaces?: boolean | undefined;
+  /** Lockfiles next to this package.json (Lerna-style repos install per package). */
+  lockfiles?: string[] | undefined;
 }
 
 export interface RepoInspection {
@@ -29,6 +31,8 @@ export interface RepoInspection {
   nodeVersionFiles: Record<string, string>;
   hasYarnrcYml: boolean;
   hasPnpmWorkspace: boolean;
+  /** lerna.json at the root: a workspace even without npm `workspaces`. */
+  hasLernaJson: boolean;
   hasSubmodules: boolean;
   packages: PackageInfo[];
   /** Text of the release workflow file, when a path was known and the file exists. */
@@ -77,6 +81,9 @@ function parsePackage(value: unknown): PackageInfo {
     publishConfig: isRecord(value.publishConfig) ? value.publishConfig : undefined,
     engines: stringRecord(value.engines),
     hasWorkspaces: typeof value.hasWorkspaces === "boolean" ? value.hasWorkspaces : undefined,
+    lockfiles: Array.isArray(value.lockfiles)
+      ? value.lockfiles.filter((entry): entry is string => typeof entry === "string")
+      : undefined,
   };
 }
 
@@ -105,6 +112,7 @@ export function parseInspection(json: unknown): RepoInspection {
     nodeVersionFiles: stringRecord(json.nodeVersionFiles) ?? {},
     hasYarnrcYml: json.hasYarnrcYml === true,
     hasPnpmWorkspace: json.hasPnpmWorkspace === true,
+    hasLernaJson: json.hasLernaJson === true,
     hasSubmodules: json.hasSubmodules === true,
     packages: json.packages.map(parsePackage),
     workflow: typeof json.workflow === "string" ? json.workflow : null,
