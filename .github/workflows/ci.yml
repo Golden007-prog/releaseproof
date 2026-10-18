@@ -46,6 +46,17 @@ jobs:
       - run: pnpm test
       - name: Smoke test CLI
         run: node packages/cli/dist/index.js --version
+      # The CLI is published from a pnpm-packed tarball (see release.yml). Catch a manifest
+      # that would ship pnpm-only specifiers before it ever reaches the registry.
+      - name: "Packed manifest must not contain catalog:/workspace: specifiers"
+        working-directory: packages/cli
+        run: |
+          pnpm pack --pack-destination /tmp/pack
+          tar -xzOf /tmp/pack/releaseproof-*.tgz package/package.json
+          if tar -xzOf /tmp/pack/releaseproof-*.tgz package/package.json | grep -qE '"(catalog|workspace):'; then
+            echo "::error::the packed package.json contains catalog:/workspace: specifiers"
+            exit 1
+          fi
       # The action runs from its committed bundle; a stale one would ship old code.
       - name: Action bundle must be committed up to date
         run: |

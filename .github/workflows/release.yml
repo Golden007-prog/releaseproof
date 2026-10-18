@@ -2,8 +2,10 @@ name: Release
 
 # releaseproof releases itself through the flow it verifies for everyone else:
 #   1. "Version Packages" PR from Changesets (version bump + changelog), merged by a human.
-#   2. On main, if packages/cli's version is not on the registry yet: npm stage publish
-#      with provenance via trusted publishing (stage-only). Nothing goes live here.
+#   2. On main, if packages/cli's version is not on the registry yet: pnpm pack (it rewrites
+#      the catalog:/workspace: specifiers; npm would publish them literally), then
+#      npm stage publish <tarball> with provenance via trusted publishing (stage-only).
+#      Nothing goes live here.
 #   3. The staged version is checked by this repository's own action.
 #   4. A maintainer approves with 2FA: npm stage approve <id>.
 # Armed once releaseproof exists on npm and its trusted publisher (stage-only) points at this
@@ -93,12 +95,33 @@ jobs:
         if: steps.decide.outputs.stage == 'true'
         run: npm install -g npm@latest
 
+      # pnpm pack rewrites catalog:/workspace: specifiers to real ranges; npm pack does not,
+      # and a manifest with "diff": "catalog:" cannot be installed by anyone.
+      - name: Pack with pnpm and refuse a manifest with pnpm-only specifiers
+        if: steps.decide.outputs.stage == 'true'
+        working-directory: packages/cli
+        env:
+          VERSION: ${{ steps.decide.outputs.version }}
+        run: |
+          pnpm pack --pack-destination /tmp/pack
+          TARBALL="/tmp/pack/releaseproof-$VERSION.tgz"
+          test -f "$TARBALL"
+          tar -tzf "$TARBALL"
+          if tar -xzOf "$TARBALL" package/package.json | grep -qE '"(catalog|workspace):'; then
+            echo "::error::the packed package.json still contains catalog:/workspace: specifiers"
+            exit 1
+          fi
+
+      # npm stage publish is npm publish with a stage flag (npm/cli lib/commands/stage/publish.js),
+      # so it takes the same <package-spec>: here the tarball pnpm just produced.
       - name: npm stage publish (trusted publishing, provenance)
         id: stage
         if: steps.decide.outputs.stage == 'true'
         working-directory: packages/cli
+        env:
+          VERSION: ${{ steps.decide.outputs.version }}
         run: |
-          npm stage publish --access public --provenance --json | tee /tmp/stage.json
+          npm stage publish "/tmp/pack/releaseproof-$VERSION.tgz" --access public --provenance --json | tee /tmp/stage.json
           STAGE_ID=$(node -e 'const r=JSON.parse(require("node:fs").readFileSync("/tmp/stage.json","utf8")); console.log(Object.values(r)[0]?.stageId ?? "")')
           test -n "$STAGE_ID"
           echo "stage-id=$STAGE_ID" >> "$GITHUB_OUTPUT"
